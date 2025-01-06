@@ -1,17 +1,16 @@
 'use client';
 
-type Channel = {
-  id: string;
-  name: string;
-  type: 'PUBLIC' | 'PRIVATE' | 'DM';
-};
+import { useEffect } from 'react';
+import { useUser } from '@clerk/nextjs';
+import { useChannels } from '@/contexts/channel-context';
 
 export const ChannelList = () => {
-  // This will be connected to real data later
-  const channels: Channel[] = [
-    { id: '1', name: 'general', type: 'PUBLIC' },
-    { id: '2', name: 'random', type: 'PUBLIC' },
-  ];
+  const { user } = useUser();
+  const { channels, refreshChannels } = useChannels();
+
+  useEffect(() => {
+    if (user) refreshChannels();
+  }, [user]);
 
   return (
     <div className="space-y-2">
