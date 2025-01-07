@@ -1,15 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { axios } from '@/lib/axios';
+import { api } from '@/lib/apiClient';
 import { Message } from '@prisma/client';
 import { useSocket } from '@/providers/socket-provider';
 import { useEffect } from 'react';
 
 export const useChannelMessages = (channelId: string) => {
-  const socket = useSocket();
+  const { socket, isConnected } = useSocket();
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !isConnected) return;
 
     socket.emit('channel:join', channelId);
 
@@ -25,11 +25,11 @@ export const useChannelMessages = (channelId: string) => {
       socket.emit('channel:leave', channelId);
       socket.off('message:new', handleNewMessage);
     };
-  }, [socket, channelId, queryClient]);
+  }, [socket, isConnected, channelId, queryClient]);
 
   return useQuery({
     queryKey: ['messages', channelId],
     queryFn: () => 
-      axios.get(`/messages/channel/${channelId}`).then(res => res.data),
+      api.get<Message[]>(`/messages/channel/${channelId}`).then(res => res.data),
   });
 }; 

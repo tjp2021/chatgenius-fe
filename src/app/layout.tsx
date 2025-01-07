@@ -1,28 +1,35 @@
-import {
-  ClerkProvider,
-  SignInButton,
-  SignedIn,
-  SignedOut,
-  UserButton
-} from '@clerk/nextjs';
+import { ClerkProvider } from '@clerk/nextjs';
+import { Inter } from 'next/font/google';
+import { AuthProvider } from '@/providers/auth-provider';
 import { SocketProvider } from '@/providers/socket-provider';
-import { QueryProvider } from '@/providers/query-provider';
-import '@/styles/globals.css'
+import { ThemeProvider } from '@/providers/theme-provider';
+import { Toaster } from '@/components/ui/toaster';
+import './globals.css';
+
+const inter = Inter({ subsets: ['latin'] });
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
   return (
     <ClerkProvider>
-      <html lang="en">
-        <body>
-          <QueryProvider>
-            <SocketProvider>
-              {children}
-            </SocketProvider>
-          </QueryProvider>
+      <html lang="en" suppressHydrationWarning>
+        <body className={inter.className}>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <AuthProvider>
+              <SocketProvider>
+                {children}
+                <Toaster />
+              </SocketProvider>
+            </AuthProvider>
+          </ThemeProvider>
         </body>
       </html>
     </ClerkProvider>
