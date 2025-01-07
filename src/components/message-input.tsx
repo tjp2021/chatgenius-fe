@@ -9,6 +9,7 @@ import { api } from '@/lib/axios';
 import { Send } from 'lucide-react';
 import { Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { toast } from '@/components/ui/use-toast';
 
 interface MessageInputProps {
   channelId: string;
@@ -51,27 +52,29 @@ export function MessageInput({ channelId, onMessageSent }: MessageInputProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!content.trim()) return;
+    if (!content.trim() || !socket) return;
 
     try {
-      if (!socket) {
-        throw new Error('Socket not connected');
-      }
-
+      setIsLoading(true);
+      
       // Emit message through socket
       socket.emit('message:send', {
-        content: content.trim(),
         channelId,
+        content: content.trim()
       });
 
+      // Clear input immediately
       setContent('');
-      onMessageSent?.();
       
-      // Clear typing indicator
-      setIsTyping(false);
-      socket?.emit('channel:stop_typing', channelId);
     } catch (error) {
       console.error('Failed to send message:', error);
+      toast({
+        title: "Error",
+        description: "Failed to send message. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -83,11 +86,15 @@ export function MessageInput({ channelId, onMessageSent }: MessageInputProps) {
   };
 
   return (
-    <div className="p-4 border-t bg-white">
+    <div className="px-4 py-3 bg-white border-t">
       <form onSubmit={handleSubmit} className="flex items-center gap-2">
         <Input
           value={content}
-          onChange={(e) => setContent(e.target.value)}
+          onChange={(e) => {
+            setContent(e.target.value);
+            handleTyping();
+          }}
+          onKeyDown={handleKeyDown}
           placeholder="Type a message..."
           className="flex-1 bg-white text-gray-900 border-gray-200"
         />
@@ -95,7 +102,7 @@ export function MessageInput({ channelId, onMessageSent }: MessageInputProps) {
           type="submit" 
           size="icon"
           className="bg-emerald-600 hover:bg-emerald-700 text-white"
-          disabled={isLoading}
+          disabled={isLoading || !content.trim()}
         >
           {isLoading ? (
             <Loader2 className="h-4 w-4 animate-spin" />

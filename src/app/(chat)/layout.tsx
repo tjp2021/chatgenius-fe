@@ -9,9 +9,9 @@ export default function ChatLayout({
 }) {
   return (
     <ChannelProvider>
-      <div className="h-screen flex">
+      <div className="h-screen flex bg-white">
         <ChannelSidebar />
-        <main className="flex-1 flex flex-col">
+        <main className="flex-1 flex flex-col bg-white">
           {children}
         </main>
       </div>

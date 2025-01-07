@@ -32,10 +32,7 @@ export function MessageList({ channelId }: MessageListProps) {
     const fetchMessages = async () => {
       try {
         const response = await api.get(`/messages/channel/${channelId}`);
-        // Sort messages by creation date, newest at bottom
-        setMessages(response.data.sort((a: MessageWithUser, b: MessageWithUser) => 
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-        ));
+        setMessages(response.data);
       } catch (error) {
         console.error('Failed to fetch messages:', error);
       } finally {
@@ -45,6 +42,14 @@ export function MessageList({ channelId }: MessageListProps) {
 
     fetchMessages();
   }, [channelId]);
+
+  // Listen for new messages
+  const onNewMessage = (message: MessageWithUser) => {
+    console.log('New message received:', message);
+    if (message.channelId === channelId) {
+      setMessages(prev => [...prev, message]);
+    }
+  };
 
   // Handle socket events
   useEffect(() => {
@@ -58,36 +63,18 @@ export function MessageList({ channelId }: MessageListProps) {
     // Join channel on initial connection
     joinChannel();
 
-    // Listen for new messages
-    const onNewMessage = (message: MessageWithUser) => {
-      console.log('New message received:', message);
-      setMessages((prev) => {
-        // Check if message already exists to prevent duplicates
-        const messageExists = prev.some(m => m.id === message.id);
-        if (messageExists) {
-          return prev;
-        }
-        return [...prev, message];
-      });
-    };
-
-    // Handle reconnection
-    socket.on('connect', () => {
-      console.log('Socket reconnected, rejoining channel');
-      joinChannel();
-    });
-
     socket.on('message:new', onNewMessage);
+    socket.on('connect', joinChannel);
 
     return () => {
       console.log('Leaving channel:', channelId);
       socket.emit('channel:leave', channelId);
       socket.off('message:new', onNewMessage);
-      socket.off('connect');
+      socket.off('connect', joinChannel);
     };
   }, [socket, isConnected, channelId]);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll when messages change
   useEffect(() => {
     const messageContainer = document.getElementById('message-container');
     if (messageContainer) {
@@ -104,13 +91,20 @@ export function MessageList({ channelId }: MessageListProps) {
   }
 
   return (
-    <div id="message-container" className="flex-1 p-4 space-y-4 bg-white overflow-y-auto">
+    <div 
+      id="message-container" 
+      className="flex-1 p-4 space-y-4 bg-white overflow-y-auto"
+      style={{ 
+        height: 'calc(100vh - 110px)',
+        overflowX: 'hidden'
+      }}
+    >
       {!messages?.length ? (
         <div className="flex items-center justify-center h-full text-muted-foreground">
           No messages yet. Start the conversation!
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-4 w-full">
           {messages.map((message) => {
             const isCurrentUser = message.userId === currentUser?.id;
             
@@ -118,7 +112,7 @@ export function MessageList({ channelId }: MessageListProps) {
               <div 
                 key={message.id} 
                 className={cn(
-                  "flex items-start gap-3",
+                  "flex items-start gap-3 w-full",
                   isCurrentUser && "flex-row-reverse"
                 )}
               >
