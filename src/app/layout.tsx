@@ -1,5 +1,12 @@
-import { AuthProvider } from './auth/auth-provider';
-import { SocketProvider } from './providers/socket-provider';
+import {
+  ClerkProvider,
+  SignInButton,
+  SignedIn,
+  SignedOut,
+  UserButton
+} from '@clerk/nextjs';
+import { SocketProvider } from '@/providers/socket-provider';
+import { QueryProvider } from '@/providers/query-provider';
 import '@/styles/globals.css'
 
 export default function RootLayout({
@@ -8,14 +15,16 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body>
-        <AuthProvider>
-          <SocketProvider>
-            {children}
-          </SocketProvider>
-        </AuthProvider>
-      </body>
-    </html>
-  )
+    <ClerkProvider>
+      <html lang="en">
+        <body>
+          <QueryProvider>
+            <SocketProvider>
+              {children}
+            </SocketProvider>
+          </QueryProvider>
+        </body>
+      </html>
+    </ClerkProvider>
+  );
 }
