@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Channel, ChannelType } from '@prisma/client';
-import { Hash, Lock, Users, ChevronDown, ChevronRight } from 'lucide-react';
+import { Hash, Lock, Users, ChevronDown, ChevronRight, MoreVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/axios';
 import { useSocket } from '@/providers/socket-provider';
@@ -11,6 +11,7 @@ import { CreateChannelDialog } from './create-channel-dialog';
 import { useAuth } from '@clerk/nextjs';
 import { Button } from './ui/button';
 import { toast } from '@/components/ui/use-toast';
+import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react';
 
 interface ChannelMember {
   userId: string;
@@ -48,6 +49,31 @@ interface SectionState {
   privateExpanded: boolean;
   dmsExpanded: boolean;
 }
+
+interface ChannelActionsDropdownProps {
+  isMember: boolean;
+  onJoin: () => void;
+  onLeave: () => void;
+}
+
+const ChannelActionsDropdown: React.FC<ChannelActionsDropdownProps> = ({ isMember, onJoin, onLeave }) => (
+  <Menu as="div" className="relative">
+    <MenuButton className="flex items-center justify-center w-6 h-6 text-gray-300 hover:text-white">
+      <MoreVertical className="w-4 h-4" />
+    </MenuButton>
+    <MenuItems className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+      {isMember ? (
+        <MenuItem as="button" onClick={onLeave} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+          Leave Public Channel
+        </MenuItem>
+      ) : (
+        <MenuItem as="button" onClick={onJoin} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+          Join Public Channel
+        </MenuItem>
+      )}
+    </MenuItems>
+  </Menu>
+);
 
 export function ChannelSidebar() {
   const router = useRouter();
@@ -142,57 +168,90 @@ export function ChannelSidebar() {
   const handleJoinChannel = async (channelId: string, type: ChannelType) => {
     try {
       if (type === ChannelType.PRIVATE) {
-        // For private channels, send join request
         await api.post(`/channels/${channelId}/request`);
-        // Show toast notification
         toast({
-          title: "Join Request Sent",
-          description: "The channel admins will review your request.",
+          title: 'Join Request Sent',
+          description: 'The channel admins will review your request.',
         });
       } else {
-        // For public channels, join directly
-        await api.post(`/channels/${channelId}/join`);
-        await fetchChannels(); // Refresh channel list
-        
-        // Join the socket room after successful join
+        const response = await api.post(`/channels/${channelId}/join`);
+        console.log('Join response:', response.data);
+
+        setChannels(prevChannels => {
+          const updatedChannels = prevChannels.public.map(channel =>
+            channel.id === channelId ? { ...channel, isMember: true } : channel
+          );
+          console.log('Updated channels:', updatedChannels);
+          return {
+            ...prevChannels,
+            public: updatedChannels,
+          };
+        });
+
         socket?.emit('channel:join', channelId);
-        
         toast({
-          title: "Channel Joined",
+          title: 'Channel Joined',
           description: "You've successfully joined the channel.",
         });
       }
     } catch (error) {
       console.error('Failed to join channel:', error);
       toast({
-        title: "Error",
-        description: "Failed to join channel. Please try again.",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Failed to join channel. Please try again.',
+        variant: 'destructive',
       });
     }
   };
 
   const handleLeaveChannel = async (channelId: string) => {
     try {
-      await api.delete(`/channels/${channelId}/leave`);
-      await fetchChannels(); // Refresh channel list
-      
-      // Leave the socket room
+      const response = await api.delete(`/channels/${channelId}/leave`);
+      console.log('Leave response:', response.data);
+
+      setChannels(prevChannels => {
+        const updatedChannels = prevChannels.public.map(channel =>
+          channel.id === channelId ? { ...channel, isMember: false } : channel
+        );
+        console.log('Updated channels:', updatedChannels);
+        return {
+          ...prevChannels,
+          public: updatedChannels,
+        };
+      });
+
       socket?.emit('channel:leave', channelId);
-      
       toast({
-        title: "Channel Left",
+        title: 'Channel Left',
         description: "You've left the channel.",
       });
     } catch (error) {
       console.error('Failed to leave channel:', error);
       toast({
-        title: "Error",
-        description: "Failed to leave channel. Please try again.",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Failed to leave channel. Please try again.',
+        variant: 'destructive',
       });
     }
   };
+
+  // Determine if the user is a member of any public channel
+  const isMemberOfAnyChannel = channels.public.some(channel => 
+    channel.members.some(member => member.userId === userId)
+  );
+
+  // Select the top channel if the user is a member of multiple channels
+  const defaultChannel = isMemberOfAnyChannel ? channels.public.find(channel => 
+    channel.members.some(member => member.userId === userId)
+  ) : null;
+
+  // Set the selected channel to the default channel if not already set
+  useEffect(() => {
+    if (!selectedChannel && defaultChannel) {
+      setSelectedChannel(defaultChannel.id);
+      router.push(`/channels/${defaultChannel.id}`);
+    }
+  }, [defaultChannel, selectedChannel, router]);
 
   // Don't show anything while auth is loading
   if (!isLoaded) {
@@ -291,38 +350,22 @@ export function ChannelSidebar() {
                       </>
                     )}
                   </div>
-                  <span className="truncate">
+                  <span className="truncate flex-1">
                     {isDM ? (otherUser?.name || 'Unknown User') : channel.name}
                   </span>
                   {channel._count.messages > 0 && (
-                    <span className="ml-auto text-xs text-gray-400">
+                    <span className="text-xs text-gray-400 mr-2">
                       {channel._count.messages}
                     </span>
                   )}
                 </button>
                 
                 {!isDM && (
-                  <div className="absolute right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-                    {isMember ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-gray-300 hover:text-white hover:bg-emerald-800/50"
-                        onClick={() => handleLeaveChannel(channel.id)}
-                      >
-                        Leave
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-gray-300 hover:text-white hover:bg-emerald-800/50"
-                        onClick={() => handleJoinChannel(channel.id, type)}
-                      >
-                        {type === ChannelType.PRIVATE ? 'Request' : 'Join'}
-                      </Button>
-                    )}
-                  </div>
+                  <ChannelActionsDropdown
+                    isMember={isMember}
+                    onJoin={() => handleJoinChannel(channel.id, type)}
+                    onLeave={() => handleLeaveChannel(channel.id)}
+                  />
                 )}
               </div>
             );
@@ -334,8 +377,8 @@ export function ChannelSidebar() {
 
   return (
     <div className="h-full flex flex-col bg-emerald-900">
-      <div className="p-4 border-b border-emerald-800">
-        <div className="flex items-center justify-between mb-4">
+      <div className="px-6 py-4 border-b border-emerald-800">
+        <div className="flex items-center justify-between gap-4">
           <h2 className="text-lg font-semibold text-white">Channels</h2>
           <CreateChannelDialog onChannelCreated={fetchChannels} />
         </div>
