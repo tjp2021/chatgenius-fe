@@ -1,5 +1,4 @@
 import { SignInButton, SignUpButton } from '@clerk/nextjs';
-import Link from 'next/link';
 
 export default function LandingPage() {
   return (
@@ -8,13 +7,17 @@ export default function LandingPage() {
       <nav className="flex justify-between items-center px-6 py-4">
         <div className="text-2xl font-bold text-[#1B4332]">ChatGenius</div>
         <div className="flex gap-4">
-          <SignInButton mode="modal">
-            <button className="text-black hover:text-[#1B4332] font-medium">
+          <SignInButton afterSignInUrl="/channels">
+            <button 
+              className="text-black hover:text-[#1B4332] font-medium cursor-pointer"
+            >
               Sign in
             </button>
           </SignInButton>
-          <SignUpButton mode="modal">
-            <button className="bg-[#1B4332] text-white px-4 py-2 rounded-lg hover:bg-[#2D6A4F] transition-colors">
+          <SignUpButton afterSignUpUrl="/channels">
+            <button 
+              className="bg-[#1B4332] text-white px-4 py-2 rounded-lg hover:bg-[#2D6A4F] transition-colors cursor-pointer"
+            >
               Sign up
             </button>
           </SignUpButton>
@@ -40,9 +43,13 @@ export default function LandingPage() {
         </p>
 
         <div className="flex justify-center mb-8">
-          <button className="bg-[#1B4332] text-white px-8 py-4 rounded-lg hover:bg-[#2D6A4F] transition-colors font-medium">
-            Get Started
-          </button>
+          <SignUpButton afterSignUpUrl="/channels">
+            <button 
+              className="bg-[#1B4332] text-white px-8 py-4 rounded-lg hover:bg-[#2D6A4F] transition-colors font-medium cursor-pointer"
+            >
+              Get Started
+            </button>
+          </SignUpButton>
         </div>
 
         <p className="text-[#52796F]">

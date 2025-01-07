@@ -1,24 +1,34 @@
 import { authMiddleware } from "@clerk/nextjs";
+import { NextResponse } from "next/server";
+import { AuthObject } from '@clerk/nextjs/server';
+import { NextRequest } from 'next/server';
 
-// This example protects all routes including api/trpc routes
-// Please edit this to allow other routes to be public as needed.
-// See https://clerk.com/docs/references/nextjs/auth-middleware for more information about configuring your Middleware
 export default authMiddleware({
-  // Public routes are routes that don't require authentication
+  // Only the landing page and Clerk webhook are public
   publicRoutes: [
-    "/", // Landing page
-    "/api/webhook/clerk", // Webhook endpoint (if you still have it)
+    "/",
+    "/api/webhook/clerk",
   ],
   
-  // Routes that can be accessed while signed out
-  ignoredRoutes: [
-    "/((?!api|trpc))(_next.*|.+.[w]+$)", // Ignore static files
-  ],
+  afterAuth(auth: AuthObject, req: NextRequest) {
+    // If user is signed in and on the landing page, redirect to channels
+    if (auth.userId && req.nextUrl.pathname === "/") {
+      return NextResponse.redirect(new URL("/channels", req.url));
+    }
 
-  // Ensure auth state is propagated to all pages
-  debug: process.env.NODE_ENV === 'development',
+    return NextResponse.next();
+  }
 });
 
 export const config = {
-  matcher: ["/((?!.+\\.[\\w]+$|_next).*)", "/", "/(api|trpc)(.*)"],
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     */
+    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/',
+  ],
 };

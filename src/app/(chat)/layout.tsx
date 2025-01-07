@@ -1,3 +1,6 @@
+'use client';
+
+import { useClerkToken } from '@/hooks/useClerkToken';
 import { ChannelSidebar } from '@/components/channel-sidebar';
 import { ChatHeader } from '@/components/chat/chat-header';
 import { ChannelProvider } from '@/contexts/channel-context';
@@ -7,6 +10,9 @@ export default function ChatLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Initialize token exchange
+  useClerkToken();
+
   return (
     <ChannelProvider>
       <div className="h-screen flex bg-white">

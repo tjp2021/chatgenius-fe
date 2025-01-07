@@ -1,46 +1,45 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs';
+import { NextResponse } from 'next/server';
+import { SignJWT } from 'jose';
 import { env } from '@/env.mjs';
 
-export async function POST(req: NextRequest) {
+export async function POST(request: Request) {
   try {
     const { userId } = auth();
+    const body = await request.json();
+    const { clerkToken } = body;
     
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (!userId || !clerkToken) {
+      return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    // Validate Clerk token with backend
-    const response = await fetch(`${env.NEXT_PUBLIC_APP_URL}/auth/validate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${req.headers.get('authorization')?.split(' ')[1]}`,
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      return NextResponse.json(
-        { error: error.message || 'Token validation failed' },
-        { status: response.status }
-      );
+    // Validate the Clerk token matches the current session
+    const currentToken = await auth().getToken();
+    if (clerkToken !== currentToken) {
+      return new NextResponse('Invalid token', { status: 401 });
     }
 
-    const data = await response.json();
-    return NextResponse.json({
-      token: req.headers.get('authorization')?.split(' ')[1], // Use Clerk token as JWT
-      user: data.user
+    // Create a JWT token
+    const token = await new SignJWT({ 
+      sub: userId,
+      type: 'access'
+    })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(new TextEncoder().encode(env.SUPABASE_JWT_SECRET));
+
+    // Return both token and user info
+    return NextResponse.json({ 
+      token,
+      user: {
+        id: userId,
+        // Add any other user info you want to return
+      }
     });
   } catch (error) {
-    console.error('Token validation error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    console.error('Token exchange error:', error);
+    return new NextResponse('Internal Server Error', { status: 500 });
   }
 }
 

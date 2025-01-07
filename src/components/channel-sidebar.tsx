@@ -1,27 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Channel, ChannelType } from '@prisma/client';
+import { Channel, ChannelType, ChannelMember } from '@/types/channel';
 import { Hash, Lock, Users, ChevronDown, ChevronRight, MoreVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/axios';
+import { setAuthToken } from '@/lib/axios';
 import { useSocket } from '@/providers/socket-provider';
 import { CreateChannelDialog } from './create-channel-dialog';
-import { useAuth } from '@clerk/nextjs';
+import { useAuth } from '@/hooks/useAuth';
 import { Button } from './ui/button';
 import { toast } from '@/components/ui/use-toast';
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react';
-
-interface ChannelMember {
-  userId: string;
-  role: 'OWNER' | 'ADMIN' | 'MEMBER';
-  user: {
-    id: string;
-    name: string;
-    imageUrl: string;
-  };
-}
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 
 interface ChannelWithDetails extends Channel {
   _count: {
@@ -75,20 +67,141 @@ const ChannelActionsDropdown: React.FC<ChannelActionsDropdownProps> = ({ isMembe
   </Menu>
 );
 
+interface ChannelSectionProps {
+  title: string;
+  channels: ChannelWithDetails[];
+  type: ChannelType;
+  isExpanded: boolean;
+  onToggle: () => void;
+  userId: string | null | undefined;
+  onlineUsers: OnlineUsers;
+  selectedChannel: string | null;
+  onChannelSelect: (channelId: string) => void;
+  onJoinChannel: (channelId: string, type: ChannelType) => void;
+  onLeaveChannel: (channelId: string) => void;
+}
+
+const ChannelSection: React.FC<ChannelSectionProps> = ({ 
+  title, 
+  channels, 
+  type,
+  isExpanded,
+  onToggle,
+  userId,
+  onlineUsers,
+  selectedChannel,
+  onChannelSelect,
+  onJoinChannel,
+  onLeaveChannel
+}) => (
+  <div className="space-y-2">
+    <button
+      onClick={onToggle}
+      className="w-full flex items-center gap-2 px-2 py-1 hover:bg-emerald-800/50 rounded-md text-gray-300"
+    >
+      {isExpanded ? (
+        <ChevronDown className="h-4 w-4" />
+      ) : (
+        <ChevronRight className="h-4 w-4" />
+      )}
+      <span className="text-sm font-semibold text-gray-300">{title}</span>
+      {channels.length > 0 && (
+        <span className="ml-auto text-xs text-gray-400">
+          {channels.length}
+        </span>
+      )}
+    </button>
+    
+    {isExpanded && (
+      <div className="space-y-1">
+        {channels.map((channel) => {
+          const isDM = type === ChannelType.DM;
+          const otherUser = isDM ? channel.members.find(m => m.userId !== userId)?.user : null;
+          const isOnline = otherUser ? onlineUsers[otherUser.id] : false;
+          const isMember = channel.members.some(member => member.userId === userId);
+
+          return (
+            <div
+              key={channel.id}
+              className="group relative flex items-center"
+            >
+              <button
+                onClick={() => {
+                  if (isMember) {
+                    onChannelSelect(channel.id);
+                  }
+                }}
+                className={cn(
+                  'w-full flex items-center gap-2 px-4 py-2 rounded-md text-sm',
+                  'hover:bg-emerald-800/50 transition-colors text-gray-100',
+                  channel.id === selectedChannel && 'bg-emerald-800',
+                  !isMember && 'opacity-75'
+                )}
+              >
+                <div className="relative flex-shrink-0">
+                  {type === ChannelType.PUBLIC && <Hash className="h-4 w-4" />}
+                  {type === ChannelType.PRIVATE && <Lock className="h-4 w-4" />}
+                  {isDM && (
+                    <>
+                      {otherUser?.imageUrl ? (
+                        <img 
+                          src={otherUser.imageUrl} 
+                          alt={otherUser.name || 'User'}
+                          className="w-6 h-6 rounded-full"
+                        />
+                      ) : (
+                        <Users className="h-4 w-4" />
+                      )}
+                      {isOnline && (
+                        <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-emerald-900" />
+                      )}
+                    </>
+                  )}
+                </div>
+                <span className="truncate flex-1">
+                  {isDM ? (otherUser?.name || 'Unknown User') : channel.name}
+                </span>
+                {channel._count.messages > 0 && (
+                  <span className="text-xs text-gray-400 mr-2">
+                    {channel._count.messages}
+                  </span>
+                )}
+              </button>
+              
+              {!isDM && (
+                <ChannelActionsDropdown
+                  isMember={isMember}
+                  onJoin={() => onJoinChannel(channel.id, type)}
+                  onLeave={() => onLeaveChannel(channel.id)}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    )}
+  </div>
+);
+
 export function ChannelSidebar() {
   const router = useRouter();
   const { socket, isConnected } = useSocket();
-  const { isSignedIn, isLoaded, userId } = useAuth();
+  const { 
+    isAuthenticated,
+    isLoading,
+    userId, 
+    getToken, 
+    isUserSynced
+  } = useAuth();
+
+  const [hasLoadedChannels, setHasLoadedChannels] = useState(false);
   const [channels, setChannels] = useState<ChannelGroups>({
     public: [],
     private: [],
     dms: [],
   });
   const [onlineUsers, setOnlineUsers] = useState<OnlineUsers>({});
-  const [isLoading, setIsLoading] = useState(true);
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
-  
-  // Section collapse state
   const [sectionState, setSectionState] = useState<SectionState>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -105,23 +218,37 @@ export function ChannelSidebar() {
     };
   });
 
-  useEffect(() => {
-    if (isLoaded && isSignedIn) {
-      fetchChannels();
+  // Channel fetching
+  const fetchChannels = useCallback(async () => {
+    if (!isAuthenticated || !isUserSynced) {
+      console.log('[Channels] Skipping fetch - not authenticated');
+      return;
     }
-  }, [isLoaded, isSignedIn]);
-
-  // Save section state to localStorage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(sectionState));
+    
+    try {
+      const response = await api.get('/channels');
+      const allChannels: ChannelWithDetails[] = response.data;
+      const groupedChannels = {
+        public: allChannels.filter(c => c.type === ChannelType.PUBLIC),
+        private: allChannels.filter(c => c.type === ChannelType.PRIVATE),
+        dms: allChannels.filter(c => c.type === ChannelType.DM),
+      };
+      
+      setChannels(groupedChannels);
+      setHasLoadedChannels(true);
+    } catch (error) {
+      console.error('[Channels] Failed to fetch:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load channels. Please try again.',
+        variant: 'destructive',
+      });
     }
-  }, [sectionState]);
+  }, [isAuthenticated, isUserSynced]);
 
   useEffect(() => {
     if (!socket || !isConnected) return;
 
-    // Listen for user presence updates
     socket.on('presence:update', ({ userId, isOnline }: { userId: string; isOnline: boolean }) => {
       setOnlineUsers(prev => ({
         ...prev,
@@ -129,7 +256,6 @@ export function ChannelSidebar() {
       }));
     });
 
-    // Get initial online status
     socket.emit('presence:get_online_users', (users: OnlineUsers) => {
       setOnlineUsers(users);
     });
@@ -139,33 +265,39 @@ export function ChannelSidebar() {
     };
   }, [socket, isConnected]);
 
-  const fetchChannels = async () => {
-    try {
-      setIsLoading(true);
-      const response = await api.get('/channels');
-      const allChannels: ChannelWithDetails[] = response.data;
-      
-      // Group channels by type
-      setChannels({
-        public: allChannels.filter(c => c.type === ChannelType.PUBLIC),
-        private: allChannels.filter(c => c.type === ChannelType.PRIVATE),
-        dms: allChannels.filter(c => c.type === ChannelType.DM),
+  useEffect(() => {
+    if (!hasLoadedChannels && isAuthenticated && isUserSynced && !isLoading) {
+      console.log('[ChannelSidebar] Attempting to fetch channels', {
+        hasLoadedChannels,
+        isAuthenticated,
+        isUserSynced,
+        isLoading
       });
-    } catch (error) {
-      console.error('Failed to fetch channels:', error);
-    } finally {
-      setIsLoading(false);
+      fetchChannels();
     }
-  };
+  }, [isAuthenticated, isUserSynced, isLoading, hasLoadedChannels, fetchChannels]);
 
-  const toggleSection = (section: keyof SectionState) => {
-    setSectionState(prev => ({
-      ...prev,
-      [section]: !prev[section],
-    }));
-  };
+  useEffect(() => {
+    console.log('[ChannelSidebar] Auth states:', {
+      isAuthenticated,
+      isLoading,
+      isUserSynced,
+      hasLoadedChannels
+    });
+  }, [isAuthenticated, isLoading, isUserSynced, hasLoadedChannels]);
 
-  const handleJoinChannel = async (channelId: string, type: ChannelType) => {
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sectionState));
+    }
+  }, [sectionState]);
+
+  const handleChannelSelect = useCallback((channelId: string) => {
+    setSelectedChannel(channelId);
+    router.push(`/channels/${channelId}`);
+  }, [router]);
+
+  const handleJoinChannel = useCallback(async (channelId: string, type: ChannelType) => {
     try {
       if (type === ChannelType.PRIVATE) {
         await api.post(`/channels/${channelId}/request`);
@@ -175,18 +307,13 @@ export function ChannelSidebar() {
         });
       } else {
         const response = await api.post(`/channels/${channelId}/join`);
-        console.log('Join response:', response.data);
-
-        setChannels(prevChannels => {
-          const updatedChannels = prevChannels.public.map(channel =>
+        
+        setChannels(prevChannels => ({
+          ...prevChannels,
+          public: prevChannels.public.map(channel =>
             channel.id === channelId ? { ...channel, isMember: true } : channel
-          );
-          console.log('Updated channels:', updatedChannels);
-          return {
-            ...prevChannels,
-            public: updatedChannels,
-          };
-        });
+          ),
+        }));
 
         socket?.emit('channel:join', channelId);
         toast({
@@ -202,23 +329,18 @@ export function ChannelSidebar() {
         variant: 'destructive',
       });
     }
-  };
+  }, [socket]);
 
-  const handleLeaveChannel = async (channelId: string) => {
+  const handleLeaveChannel = useCallback(async (channelId: string) => {
     try {
-      const response = await api.delete(`/channels/${channelId}/leave`);
-      console.log('Leave response:', response.data);
-
-      setChannels(prevChannels => {
-        const updatedChannels = prevChannels.public.map(channel =>
+      await api.delete(`/channels/${channelId}/leave`);
+      
+      setChannels(prevChannels => ({
+        ...prevChannels,
+        public: prevChannels.public.map(channel =>
           channel.id === channelId ? { ...channel, isMember: false } : channel
-        );
-        console.log('Updated channels:', updatedChannels);
-        return {
-          ...prevChannels,
-          public: updatedChannels,
-        };
-      });
+        ),
+      }));
 
       socket?.emit('channel:leave', channelId);
       toast({
@@ -233,164 +355,53 @@ export function ChannelSidebar() {
         variant: 'destructive',
       });
     }
-  };
+  }, [socket]);
 
-  // Determine if the user is a member of any public channel
-  const isMemberOfAnyChannel = channels.public.some(channel => 
-    channel.members.some(member => member.userId === userId)
-  );
+  const toggleSection = useCallback((section: keyof SectionState) => {
+    setSectionState(prev => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
+  }, []);
 
-  // Select the top channel if the user is a member of multiple channels
-  const defaultChannel = isMemberOfAnyChannel ? channels.public.find(channel => 
-    channel.members.some(member => member.userId === userId)
-  ) : null;
-
-  // Set the selected channel to the default channel if not already set
-  useEffect(() => {
-    if (!selectedChannel && defaultChannel) {
-      setSelectedChannel(defaultChannel.id);
-      router.push(`/channels/${defaultChannel.id}`);
-    }
-  }, [defaultChannel, selectedChannel, router]);
-
-  // Don't show anything while auth is loading
-  if (!isLoaded) {
-    return null;
-  }
-
-  // Redirect to login if not authenticated
-  if (!isSignedIn) {
-    router.push('/sign-in');
-    return null;
-  }
-
-  if (isLoading) {
+  // Early return for loading/auth states
+  if (isLoading || !isUserSynced) {
     return (
-      <div className="p-4 text-muted-foreground">
-        Loading channels...
+      <div className="h-full flex flex-col items-center justify-center bg-emerald-900">
+        <LoadingSpinner className="text-emerald-500 mb-4" size="lg" />
+        <div className="text-white text-center">
+          {isLoading ? "Loading authentication..." : "Syncing user data..."}
+        </div>
       </div>
     );
   }
 
-  const ChannelSection = ({ 
-    title, 
-    channels, 
-    type,
-    isExpanded,
-    onToggle,
-  }: { 
-    title: string;
-    channels: ChannelWithDetails[];
-    type: ChannelType;
-    isExpanded: boolean;
-    onToggle: () => void;
-  }) => (
-    <div className="space-y-2">
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center gap-2 px-2 py-1 hover:bg-emerald-800/50 rounded-md text-gray-300"
-      >
-        {isExpanded ? (
-          <ChevronDown className="h-4 w-4" />
-        ) : (
-          <ChevronRight className="h-4 w-4" />
-        )}
-        <span className="text-sm font-semibold text-gray-300">{title}</span>
-        {channels.length > 0 && (
-          <span className="ml-auto text-xs text-gray-400">
-            {channels.length}
-          </span>
-        )}
-      </button>
-      
-      {isExpanded && (
-        <div className="space-y-1">
-          {channels.map((channel) => {
-            const isDM = type === ChannelType.DM;
-            const otherUser = isDM ? channel.members.find(m => m.userId !== userId)?.user : null;
-            const isOnline = otherUser ? onlineUsers[otherUser.id] : false;
-            const isMember = channel.members.some(member => member.userId === userId);
-
-            return (
-              <div
-                key={channel.id}
-                className="group relative flex items-center"
-              >
-                <button
-                  onClick={() => {
-                    if (isMember) {
-                      setSelectedChannel(channel.id);
-                      router.push(`/channels/${channel.id}`);
-                    }
-                  }}
-                  className={cn(
-                    'w-full flex items-center gap-2 px-4 py-2 rounded-md text-sm',
-                    'hover:bg-emerald-800/50 transition-colors text-gray-100',
-                    channel.id === selectedChannel && 'bg-emerald-800',
-                    !isMember && 'opacity-75'
-                  )}
-                >
-                  <div className="relative flex-shrink-0">
-                    {type === ChannelType.PUBLIC && <Hash className="h-4 w-4" />}
-                    {type === ChannelType.PRIVATE && <Lock className="h-4 w-4" />}
-                    {isDM && (
-                      <>
-                        {otherUser?.imageUrl ? (
-                          <img 
-                            src={otherUser.imageUrl} 
-                            alt={otherUser.name || 'User'}
-                            className="w-6 h-6 rounded-full"
-                          />
-                        ) : (
-                          <Users className="h-4 w-4" />
-                        )}
-                        {isOnline && (
-                          <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-emerald-900" />
-                        )}
-                      </>
-                    )}
-                  </div>
-                  <span className="truncate flex-1">
-                    {isDM ? (otherUser?.name || 'Unknown User') : channel.name}
-                  </span>
-                  {channel._count.messages > 0 && (
-                    <span className="text-xs text-gray-400 mr-2">
-                      {channel._count.messages}
-                    </span>
-                  )}
-                </button>
-                
-                {!isDM && (
-                  <ChannelActionsDropdown
-                    isMember={isMember}
-                    onJoin={() => handleJoinChannel(channel.id, type)}
-                    onLeave={() => handleLeaveChannel(channel.id)}
-                  />
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
+  // If not authenticated, render nothing - let Clerk handle the redirect
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
-    <div className="h-full flex flex-col bg-emerald-900">
+    <div className="h-screen flex flex-col bg-emerald-900">
       <div className="px-6 py-4 border-b border-emerald-800">
         <div className="flex items-center justify-between gap-4">
           <h2 className="text-lg font-semibold text-white">Channels</h2>
-          <CreateChannelDialog onChannelCreated={fetchChannels} />
         </div>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-2 space-y-4">
+      <div className="flex-1 overflow-y-auto p-2 space-y-4 min-h-0">
         <ChannelSection
           title="PUBLIC CHANNELS"
           channels={channels.public}
           type={ChannelType.PUBLIC}
           isExpanded={sectionState.publicExpanded}
           onToggle={() => toggleSection('publicExpanded')}
+          userId={userId}
+          onlineUsers={onlineUsers}
+          selectedChannel={selectedChannel}
+          onChannelSelect={handleChannelSelect}
+          onJoinChannel={handleJoinChannel}
+          onLeaveChannel={handleLeaveChannel}
         />
         
         <ChannelSection
@@ -399,6 +410,12 @@ export function ChannelSidebar() {
           type={ChannelType.PRIVATE}
           isExpanded={sectionState.privateExpanded}
           onToggle={() => toggleSection('privateExpanded')}
+          userId={userId}
+          onlineUsers={onlineUsers}
+          selectedChannel={selectedChannel}
+          onChannelSelect={handleChannelSelect}
+          onJoinChannel={handleJoinChannel}
+          onLeaveChannel={handleLeaveChannel}
         />
         
         <ChannelSection
@@ -407,6 +424,19 @@ export function ChannelSidebar() {
           type={ChannelType.DM}
           isExpanded={sectionState.dmsExpanded}
           onToggle={() => toggleSection('dmsExpanded')}
+          userId={userId}
+          onlineUsers={onlineUsers}
+          selectedChannel={selectedChannel}
+          onChannelSelect={handleChannelSelect}
+          onJoinChannel={handleJoinChannel}
+          onLeaveChannel={handleLeaveChannel}
+        />
+      </div>
+
+      <div className="p-4 border-t border-emerald-800">
+        <CreateChannelDialog 
+          onChannelCreated={() => setHasLoadedChannels(false)}
+          className="w-full justify-center bg-emerald-800 hover:bg-emerald-700 text-white"
         />
       </div>
     </div>

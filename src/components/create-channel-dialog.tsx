@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { ChannelType } from '@prisma/client';
+import { ChannelType } from '@/types/channel';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
 import { api } from '@/lib/axios';
+import { cn } from '@/lib/utils';
 
 const formSchema = z.object({
   name: z.string().min(1, 'Channel name is required').max(50),
@@ -43,9 +44,13 @@ type FormData = z.infer<typeof formSchema>;
 
 interface CreateChannelDialogProps {
   onChannelCreated?: () => void;
+  className?: string;
 }
 
-export function CreateChannelDialog({ onChannelCreated }: CreateChannelDialogProps) {
+export function CreateChannelDialog({ 
+  onChannelCreated,
+  className 
+}: CreateChannelDialogProps) {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
   
@@ -80,7 +85,15 @@ export function CreateChannelDialog({ onChannelCreated }: CreateChannelDialogPro
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline">Create Channel</Button>
+        <Button 
+          variant="outline" 
+          className={cn(
+            "text-white hover:text-white hover:bg-emerald-800/50",
+            className
+          )}
+        >
+          Create Channel
+        </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>

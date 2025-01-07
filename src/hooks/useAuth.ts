@@ -1,7 +1,7 @@
 import { useAuth as useClerkAuth } from '@clerk/nextjs';
-import { useEffect, useState, useCallback } from 'react';
-import { apiClient } from '@/lib/api-client';
-import { jwtService } from '@/lib/jwt';
+import { useEffect, useState } from 'react';
+import { setAuthToken } from '@/lib/axios';
+import { api } from '@/lib/axios';
 
 interface User {
   id: string;
@@ -9,76 +9,112 @@ interface User {
   // Add other user properties from your backend
 }
 
-interface AuthResponse {
-  token: string;
-  user: User;
-}
-
 export function useAuth() {
-  const { isLoaded, isSignedIn, userId, getToken } = useClerkAuth();
+  const clerk = useClerkAuth();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [token, setToken] = useState<string | null>(null);
+  const [isUserSynced, setIsUserSynced] = useState(false);
+  const [isSyncChecking, setIsSyncChecking] = useState(true);
+  const [syncRetries, setSyncRetries] = useState(0);
+  const MAX_SYNC_RETRIES = 10;
 
-  const refreshJWT = useCallback(async () => {
-    if (!isSignedIn || !userId) return;
-
-    try {
-      const clerkToken = await getToken();
-      const response = await apiClient.post<AuthResponse>('/api/auth/token', {
-        clerkToken,
-      });
-      
-      jwtService.setToken(response.token);
-      setUser(response.user);
-    } catch (error) {
-      console.error('Error refreshing JWT:', error);
-      jwtService.clearToken();
-      setUser(null);
-    }
-  }, [isSignedIn, userId, getToken]);
-
+  // Update loading state when Clerk loads
   useEffect(() => {
-    const handleRefreshNeeded = () => {
-      refreshJWT();
-    };
-
-    window.addEventListener('jwt:refresh-needed', handleRefreshNeeded);
-    return () => {
-      window.removeEventListener('jwt:refresh-needed', handleRefreshNeeded);
-    };
-  }, [refreshJWT]);
-
-  useEffect(() => {
-    const initializeAuth = async () => {
-      if (isSignedIn && userId) {
-        try {
-          await refreshJWT();
-        } catch (error) {
-          console.error('Error initializing auth:', error);
-        }
-      } else {
-        jwtService.clearToken();
-        setUser(null);
-      }
+    if (clerk.isLoaded) {
       setIsLoading(false);
-    };
-
-    if (isLoaded) {
-      initializeAuth();
     }
-  }, [isLoaded, isSignedIn, userId, refreshJWT]);
+  }, [clerk.isLoaded]);
 
-  const logout = useCallback(async () => {
-    jwtService.clearToken();
-    setUser(null);
-  }, []);
+  // First set up the token getter as soon as Clerk is loaded
+  useEffect(() => {
+    if (!clerk.isLoaded) {
+      console.log('[useAuth] Clerk not loaded yet');
+      return;
+    }
 
+    console.log('[useAuth] Setting up token getter');
+    setAuthToken(async () => {
+      try {
+        const token = await clerk.getToken();
+        console.log('[useAuth] Got token:', !!token);
+        return token;
+      } catch (error) {
+        console.error('[useAuth] Failed to get token:', error);
+        return null;
+      }
+    });
+  }, [clerk.isLoaded]);
+
+  // Then check user sync status
+  useEffect(() => {
+    let mounted = true;
+    let retryTimeout: NodeJS.Timeout;
+
+    async function checkUserSync() {
+      if (!clerk.isSignedIn || !clerk.isLoaded) {
+        console.log('[useAuth] Skipping sync check - not signed in or not loaded');
+        setIsSyncChecking(false);
+        return;
+      }
+
+      try {
+        // First get a fresh token
+        const token = await clerk.getToken();
+        if (!token) {
+          throw new Error('No token available');
+        }
+
+        // Set up auth token for API calls
+        setAuthToken(async () => token);
+
+        console.log('[useAuth] Checking user sync status with token');
+        const response = await api.get('/users/me');
+        
+        if (mounted) {
+          console.log('[useAuth] User sync check successful');
+          setUser(response.data);
+          setIsUserSynced(true);
+          setIsSyncChecking(false);
+          setSyncRetries(0);
+          setToken(token);  // Only set token after successful sync
+        }
+      } catch (error) {
+        if (!mounted) return;
+
+        console.log('[useAuth] User sync check failed:', { error, retries: syncRetries });
+        setIsUserSynced(false);
+        setIsSyncChecking(false);
+        setToken(null);  // Clear token on failure
+        
+        if (syncRetries < MAX_SYNC_RETRIES) {
+          setSyncRetries(prev => prev + 1);
+          retryTimeout = setTimeout(checkUserSync, Math.min(1000 * Math.pow(1.5, syncRetries), 10000));
+        } else {
+          console.error('[useAuth] Max sync retries exceeded');
+        }
+      }
+    }
+
+    checkUserSync();
+
+    return () => {
+      mounted = false;
+      if (retryTimeout) clearTimeout(retryTimeout);
+    };
+  }, [clerk.isSignedIn, clerk.isLoaded, syncRetries]);
+
+  // Remove the separate token update effect since we handle it in sync
+  const isAuthenticated = clerk.isSignedIn && !!token && isUserSynced;
+  
   return {
-    isAuthenticated: isSignedIn && !!jwtService.getToken(),
-    isLoading: !isLoaded || isLoading,
+    isAuthenticated,
+    isLoading: !clerk.isLoaded || isLoading,
     user,
-    userId,
-    refreshJWT,
-    logout,
+    userId: clerk.userId,
+    token,
+    isUserSynced,
+    isSyncChecking,
+    getToken: clerk.getToken,
   };
 } 
