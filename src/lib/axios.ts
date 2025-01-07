@@ -27,6 +27,7 @@ api.interceptors.request.use(async (config) => {
     }
     return config;
   } catch (error) {
+    console.error('Failed to get auth token:', error);
     return Promise.reject(error);
   }
 });
@@ -35,11 +36,34 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    // Handle 401 errors (unauthorized)
-    if (error.response?.status === 401) {
-      // Redirect to sign-in or handle token refresh
+    // Log the error for debugging
+    console.error('API Error:', {
+      url: error.config?.url,
+      method: error.config?.method,
+      status: error.response?.status,
+      data: error.response?.data,
+    });
+
+    // Handle auth errors (401, 403)
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      // Try to get a new token
+      if (getToken) {
+        try {
+          const token = await getToken();
+          if (token) {
+            // Retry the request with new token
+            error.config.headers.Authorization = `Bearer ${token}`;
+            return axios(error.config);
+          }
+        } catch (tokenError) {
+          console.error('Failed to refresh token:', tokenError);
+        }
+      }
+
+      // If we couldn't get a new token, redirect to sign-in
       window.location.href = '/sign-in';
     }
+
     return Promise.reject(error);
   }
 );

@@ -1,4 +1,4 @@
-import { Sidebar } from '@/components/chat/sidebar';
+import { ChannelSidebar } from '@/components/channel-sidebar';
 import { ChatHeader } from '@/components/chat/chat-header';
 import { ChannelProvider } from '@/contexts/channel-context';
 
@@ -10,9 +10,8 @@ export default function ChatLayout({
   return (
     <ChannelProvider>
       <div className="h-screen flex">
-        <Sidebar />
+        <ChannelSidebar />
         <main className="flex-1 flex flex-col">
-          <ChatHeader />
           {children}
         </main>
       </div>

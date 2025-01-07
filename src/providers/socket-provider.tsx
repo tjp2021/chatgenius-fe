@@ -21,26 +21,33 @@ export const useSocket = () => {
 export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const { getToken } = useAuth();
+  const { getToken, isSignedIn, isLoaded } = useAuth();
 
   useEffect(() => {
     let socketInstance: Socket | null = null;
 
     const initSocket = async () => {
       try {
+        // Don't attempt connection if not signed in
+        if (!isLoaded || !isSignedIn) {
+          console.log('Socket init: Not authenticated, skipping connection');
+          return;
+        }
+
         const token = await getToken();
         if (!token) {
-          console.error('No auth token available');
+          console.error('Socket init: No auth token available');
           return;
         }
 
         // Clean up existing socket if any
         if (socketInstance) {
+          console.log('Socket init: Cleaning up existing connection');
           socketInstance.disconnect();
         }
 
         const socketUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '');
-        console.log('Connecting to socket URL:', socketUrl);
+        console.log('Socket init: Attempting connection to:', socketUrl);
 
         socketInstance = io(socketUrl!, {
           auth: { token },
@@ -55,15 +62,16 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         });
 
         socketInstance.on('connect', () => {
-          console.log('Socket connected successfully', {
+          console.log('Socket event: Connected', {
             id: socketInstance?.id,
             connected: socketInstance?.connected,
+            transport: socketInstance?.io.engine.transport.name
           });
           setIsConnected(true);
         });
 
         socketInstance.on('disconnect', (reason) => {
-          console.log('Socket disconnected:', {
+          console.log('Socket event: Disconnected', {
             reason,
             id: socketInstance?.id,
             connected: socketInstance?.connected,
@@ -72,38 +80,59 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         });
 
         socketInstance.on('connect_error', (error) => {
-          console.error('Socket connection error:', {
+          console.error('Socket event: Connection error', {
             message: error.message,
             name: error.name,
-            stack: error.stack,
+            context: {
+              url: socketUrl,
+              transport: socketInstance?.io.engine.transport.name,
+            }
           });
           setIsConnected(false);
         });
 
         socketInstance.on('error', (error) => {
-          console.error('Socket error:', error);
+          console.error('Socket event: General error', {
+            error,
+            context: {
+              id: socketInstance?.id,
+              connected: socketInstance?.connected,
+              transport: socketInstance?.io.engine.transport.name
+            }
+          });
           setIsConnected(false);
         });
 
+        // Log all incoming events
+        socketInstance.onAny((eventName, ...args) => {
+          console.log('Socket incoming:', eventName, args);
+        });
+
+        // Log all outgoing events
+        const emit = socketInstance.emit;
+        socketInstance.emit = function (...args) {
+          console.log('Socket outgoing:', args[0], args.slice(1));
+          return emit.apply(this, args);
+        };
+
         setSocket(socketInstance);
       } catch (error) {
-        console.error('Failed to initialize socket:', error);
+        console.error('Socket init: Failed to initialize', error);
         setIsConnected(false);
       }
     };
 
     initSocket();
 
-    // Cleanup function
     return () => {
       if (socketInstance) {
-        console.log('Cleaning up socket connection');
+        console.log('Socket cleanup: Disconnecting');
         socketInstance.disconnect();
         setSocket(null);
         setIsConnected(false);
       }
     };
-  }, [getToken]);
+  }, [getToken, isSignedIn, isLoaded]);
 
   return (
     <SocketContext.Provider value={{ socket, isConnected }}>

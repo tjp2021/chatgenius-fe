@@ -6,6 +6,9 @@ import { useSocket } from '@/providers/socket-provider';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/axios';
+import { Send } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 
 interface MessageInputProps {
   channelId: string;
@@ -17,6 +20,7 @@ export function MessageInput({ channelId, onMessageSent }: MessageInputProps) {
   const [isTyping, setIsTyping] = useState(false);
   const { socket } = useSocket();
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleTyping = () => {
     if (!isTyping) {
@@ -50,7 +54,12 @@ export function MessageInput({ channelId, onMessageSent }: MessageInputProps) {
     if (!content.trim()) return;
 
     try {
-      await api.post('/messages', {
+      if (!socket) {
+        throw new Error('Socket not connected');
+      }
+
+      // Emit message through socket
+      socket.emit('message:send', {
         content: content.trim(),
         channelId,
       });
@@ -74,22 +83,27 @@ export function MessageInput({ channelId, onMessageSent }: MessageInputProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="p-4 border-t">
-      <div className="flex gap-2">
-        <Textarea
+    <div className="p-4 border-t bg-white">
+      <form onSubmit={handleSubmit} className="flex items-center gap-2">
+        <Input
           value={content}
-          onChange={(e) => {
-            setContent(e.target.value);
-            handleTyping();
-          }}
-          onKeyDown={handleKeyDown}
+          onChange={(e) => setContent(e.target.value)}
           placeholder="Type a message..."
-          className="min-h-[80px]"
+          className="flex-1 bg-white text-gray-900 border-gray-200"
         />
-        <Button type="submit" size="icon" disabled={!content.trim()}>
-          <SendHorizontal className="h-4 w-4" />
+        <Button 
+          type="submit" 
+          size="icon"
+          className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Send className="h-4 w-4" />
+          )}
         </Button>
-      </div>
-    </form>
+      </form>
+    </div>
   );
 } 

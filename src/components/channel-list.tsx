@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { api } from '@/lib/axios';
 import { useSocket } from '@/providers/socket-provider';
 import { CreateChannelDialog } from './create-channel-dialog';
+import { useAuth } from '@clerk/nextjs';
 
 interface ChannelWithMemberCount extends Channel {
   _count: {
@@ -19,70 +20,73 @@ interface ChannelWithMemberCount extends Channel {
 export function ChannelList() {
   const router = useRouter();
   const { socket } = useSocket();
+  const { isSignedIn, isLoaded } = useAuth();
   const [channels, setChannels] = useState<ChannelWithMemberCount[]>([]);
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetchChannels();
-  }, []);
+    if (isLoaded && isSignedIn) {
+      fetchChannels();
+    }
+  }, [isLoaded, isSignedIn]);
 
   const fetchChannels = async () => {
     try {
+      setIsLoading(true);
       const response = await api.get('/channels');
       setChannels(response.data);
     } catch (error) {
       console.error('Failed to fetch channels:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleChannelSelect = async (channelId: string) => {
-    try {
-      // Join the channel socket room
-      socket?.emit('channel:join', channelId);
-      
-      // Update UI
-      setSelectedChannel(channelId);
-      router.push(`/channels/${channelId}`);
-    } catch (error) {
-      console.error('Failed to join channel:', error);
-    }
-  };
+  // Don't show anything while auth is loading
+  if (!isLoaded) {
+    return null;
+  }
 
-  const getChannelIcon = (type: ChannelType) => {
-    switch (type) {
-      case 'PUBLIC':
-        return <Hash className="h-4 w-4" />;
-      case 'PRIVATE':
-        return <Lock className="h-4 w-4" />;
-      case 'DM':
-        return <MessageSquare className="h-4 w-4" />;
-    }
-  };
+  // Redirect to login if not authenticated
+  if (!isSignedIn) {
+    router.push('/sign-in');
+    return null;
+  }
+
+  if (isLoading) {
+    return (
+      <div className="p-4 text-muted-foreground">
+        Loading channels...
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-4 border-b">
-        <h2 className="text-lg font-semibold mb-4">Your Channels</h2>
+    <div className="space-y-4 p-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Channels</h2>
         <CreateChannelDialog onChannelCreated={fetchChannels} />
       </div>
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="space-y-2">
         {channels.map((channel) => (
           <button
             key={channel.id}
-            onClick={() => handleChannelSelect(channel.id)}
+            onClick={() => router.push(`/channels/${channel.id}`)}
             className={cn(
-              'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm',
-              'hover:bg-accent/50 transition-colors',
-              selectedChannel === channel.id && 'bg-accent'
+              'w-full flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-muted/50 transition',
+              channel.id === selectedChannel && 'bg-muted'
             )}
           >
-            {getChannelIcon(channel.type)}
-            <span className="truncate">{channel.name}</span>
-            {channel._count.messages > 0 && (
-              <span className="ml-auto text-xs text-muted-foreground">
-                {channel._count.messages}
-              </span>
+            {channel.type === ChannelType.PUBLIC ? (
+              <Hash className="h-4 w-4" />
+            ) : (
+              <Lock className="h-4 w-4" />
             )}
+            <span>{channel.name}</span>
+            <span className="ml-auto text-xs text-muted-foreground">
+              {channel._count.messages} messages
+            </span>
           </button>
         ))}
       </div>
