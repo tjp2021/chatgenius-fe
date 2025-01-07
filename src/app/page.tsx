@@ -3,39 +3,52 @@ import Link from 'next/link';
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-gray-50 to-gray-100">
-      <div className="text-center space-y-8 p-8">
-        <h1 className="text-5xl font-bold text-gray-900">
-          Welcome to ChatGenius
-        </h1>
-        
-        <p className="text-xl text-gray-600 max-w-2xl">
-          Experience the next generation of AI-powered conversations.
-        </p>
-
-        <div className="flex gap-4 justify-center">
+    <div className="min-h-screen flex flex-col">
+      {/* Navigation */}
+      <nav className="flex justify-between items-center px-6 py-4">
+        <div className="text-2xl font-bold text-[#1B4332]">ChatGenius</div>
+        <div className="flex gap-4">
           <SignInButton mode="modal">
-            <button className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium transition-colors">
-              Sign In
+            <button className="text-black hover:text-[#1B4332] font-medium">
+              Sign in
             </button>
           </SignInButton>
-
           <SignUpButton mode="modal">
-            <button className="bg-white hover:bg-gray-50 text-blue-500 px-6 py-3 rounded-lg font-medium border-2 border-blue-500 transition-colors">
-              Sign Up
+            <button className="bg-[#1B4332] text-white px-4 py-2 rounded-lg hover:bg-[#2D6A4F] transition-colors">
+              Sign up
             </button>
           </SignUpButton>
         </div>
+      </nav>
 
-        <div className="pt-8">
-          <Link 
-            href="/dashboard" 
-            className="text-blue-500 hover:text-blue-600 font-medium"
-          >
-            Go to Dashboard →
-          </Link>
+      {/* Hero Section */}
+      <main className="flex-1 flex flex-col items-center justify-center text-center px-6 -mt-16">
+        <h1 className="text-[#081C15] text-6xl font-bold max-w-4xl leading-tight mb-6">
+          Where{" "}
+          <span className="text-[#1B4332]">
+            AI-powered
+            <br />
+            collaboration
+          </span>
+          <br />
+          happens
+        </h1>
+        
+        <p className="text-[#52796F] text-xl max-w-2xl mb-12">
+          Transform your team communication with intelligent chat, automated
+          workflows, and AI assistance.
+        </p>
+
+        <div className="flex justify-center mb-8">
+          <button className="bg-[#1B4332] text-white px-8 py-4 rounded-lg hover:bg-[#2D6A4F] transition-colors font-medium">
+            Get Started
+          </button>
         </div>
-      </div>
+
+        <p className="text-[#52796F]">
+          Free to try, no credit card required
+        </p>
+      </main>
     </div>
   );
 }
