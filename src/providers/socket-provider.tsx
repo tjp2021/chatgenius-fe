@@ -1,7 +1,8 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { io } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
 import { useAuth } from '@clerk/nextjs';
 
 interface SocketContextType {
@@ -24,35 +25,62 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
   const { getToken, userId } = useAuth();
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      console.log('No user ID, skipping socket connection');
+      return;
+    }
+
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
+    if (!socketUrl) {
+      console.error('Socket URL not configured');
+      return;
+    }
 
     const initSocket = async () => {
-      const token = await getToken();
-      console.log('Initializing socket connection to:', process.env.NEXT_PUBLIC_SOCKET_URL);
-      const socketInstance = io(process.env.NEXT_PUBLIC_SOCKET_URL!, {
-        auth: { token, userId },
-      });
+      try {
+        const token = await getToken();
+        console.log('Initializing socket connection to:', socketUrl);
+        
+        const socketInstance = io(socketUrl, {
+          auth: { token, userId },
+          transports: ['websocket', 'polling'],
+          reconnection: true,
+          reconnectionAttempts: 5,
+          reconnectionDelay: 1000,
+          reconnectionDelayMax: 5000,
+          timeout: 20000,
+        });
 
-      socketInstance.on('connect', () => {
-        console.log('Socket connected successfully');
-        setIsConnected(true);
-      });
+        socketInstance.on('connect', () => {
+          console.log('Socket connected successfully');
+          setIsConnected(true);
+        });
 
-      socketInstance.on('connect_error', (error) => {
-        console.error('Socket connection error:', error.message);
-        setIsConnected(false);
-      });
+        socketInstance.on('connect_error', (error: Error) => {
+          console.error('Socket connection error:', error.message);
+          setIsConnected(false);
+        });
 
-      socketInstance.on('disconnect', () => {
-        console.log('Socket disconnected');
-        setIsConnected(false);
-      });
+        socketInstance.on('disconnect', (reason: string) => {
+          console.log('Socket disconnected:', reason);
+          setIsConnected(false);
+        });
 
-      setSocket(socketInstance);
+        socketInstance.on('error', (error: Error) => {
+          console.error('Socket error:', error);
+          setIsConnected(false);
+        });
 
-      return () => {
-        socketInstance.disconnect();
-      };
+        setSocket(socketInstance);
+
+        return () => {
+          console.log('Cleaning up socket connection');
+          socketInstance.disconnect();
+        };
+      } catch (error) {
+        console.error('Failed to initialize socket:', error);
+        return () => {};
+      }
     };
 
     const cleanup = initSocket();

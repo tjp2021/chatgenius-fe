@@ -1,0 +1,278 @@
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Channel, ChannelType, ChannelWithDetails, ChannelMember } from '@/types/channel';
+import { api } from '@/lib/axios';
+import { cn } from '@/lib/utils';
+import { useSocket } from '@/providers/socket-provider';
+import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/hooks/useAuth';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Hash, Users, Search, AlertCircle } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+
+interface BrowseChannelsModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalProps) {
+  const router = useRouter();
+  const { socket } = useSocket();
+  const { toast } = useToast();
+  const { userId } = useAuth();
+  const [search, setSearch] = useState('');
+  const queryClient = useQueryClient();
+
+  // Fetch all public channels and joined channels
+  const { data: allPublicChannels = [], isLoading: isLoadingPublic } = useQuery({
+    queryKey: ['channels', 'all-public', search],
+    queryFn: () => api.get('/channels/public', {
+      params: {
+        search,
+        sortBy: 'name',
+        sortOrder: 'asc'
+      }
+    }).then(res => res.data),
+    enabled: open
+  });
+
+  const { data: joinedChannels = [], isLoading: isLoadingJoined } = useQuery({
+    queryKey: ['channels', 'joined', search],
+    queryFn: () => api.get('/channels/joined', {
+      params: {
+        search,
+        sortBy: 'name',
+        sortOrder: 'asc'
+      }
+    }).then(res => res.data),
+    enabled: open
+  });
+
+  // Filter public channels to only show those not joined
+  const joinedChannelIds = new Set(joinedChannels.map((channel: ChannelWithDetails) => channel.id));
+  const availablePublicChannels = allPublicChannels.filter(
+    (channel: ChannelWithDetails) => !joinedChannelIds.has(channel.id)
+  );
+
+  // Join channel mutation
+  const joinChannelMutation = useMutation({
+    mutationFn: (channelId: string) => api.post(`/channels/${channelId}/join`),
+    onSuccess: (_, channelId) => {
+      // Invalidate both queries to refresh the lists
+      queryClient.invalidateQueries({ queryKey: ['channels', 'all-public'] });
+      queryClient.invalidateQueries({ queryKey: ['channels', 'joined'] });
+      
+      if (socket) {
+        socket.emit('channel:join', channelId);
+      }
+      
+      toast({
+        title: 'Success',
+        description: 'Successfully joined the channel',
+      });
+      
+      router.push(`/channels/${channelId}`);
+      onOpenChange(false);
+    },
+    onError: (error: any) => {
+      console.error('Failed to join channel:', error);
+      let errorMessage = 'Failed to join channel. Please try again.';
+      if (error.response?.status === 403) {
+        errorMessage = 'You do not have permission to join this channel.';
+      } else if (error.response?.status === 409) {
+        errorMessage = 'You are already a member of this channel.';
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      toast({
+        title: 'Error',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    }
+  });
+
+  // Leave channel mutation
+  const leaveChannelMutation = useMutation({
+    mutationFn: (channelId: string) => api.post(`/channels/${channelId}/leave`),
+    onSuccess: (_, channelId) => {
+      // Invalidate both queries to refresh the lists
+      queryClient.invalidateQueries({ queryKey: ['channels', 'all-public'] });
+      queryClient.invalidateQueries({ queryKey: ['channels', 'joined'] });
+      
+      if (socket) {
+        socket.emit('channel:leave', channelId);
+      }
+
+      toast({
+        title: 'Success',
+        description: 'Successfully left the channel',
+      });
+
+      // Navigate to the next available channel or home
+      const remainingChannels = joinedChannels.filter((c: ChannelWithDetails) => c.id !== channelId);
+      if (remainingChannels.length > 0) {
+        router.push(`/channels/${remainingChannels[0].id}`);
+      } else {
+        router.push('/');
+      }
+    },
+    onError: (error: any) => {
+      console.error('Failed to leave channel:', error);
+      let errorMessage = 'Failed to leave channel. Please try again.';
+      if (error.response?.status === 403) {
+        errorMessage = 'You do not have permission to leave this channel.';
+      } else if (error.response?.status === 401) {
+        errorMessage = 'You must be logged in to leave a channel.';
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      toast({
+        title: 'Error',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    }
+  });
+
+  const handleJoinChannel = (channelId: string) => {
+    if (!userId) {
+      toast({
+        title: 'Error',
+        description: 'You must be logged in to join a channel.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    joinChannelMutation.mutate(channelId);
+  };
+
+  const handleLeaveChannel = (channelId: string) => {
+    if (!userId) {
+      toast({
+        title: 'Error',
+        description: 'You must be logged in to leave a channel.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    leaveChannelMutation.mutate(channelId);
+  };
+
+  const ChannelList = ({ channels, showJoinButton }: { channels: ChannelWithDetails[], showJoinButton: boolean }) => (
+    <div className="space-y-4">
+      {channels.map((channel) => (
+        <div
+          key={channel.id}
+          className="bg-white p-4 rounded-lg shadow-sm border flex items-center justify-between"
+        >
+          <div className="flex items-center gap-4 flex-1 min-w-0">
+            <div className="bg-emerald-100 p-2 rounded-lg flex-shrink-0">
+              <Hash className="h-5 w-5 text-emerald-600" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-semibold truncate">{channel.name}</h3>
+              <p className="text-sm text-gray-500 truncate">{channel.description}</p>
+              <div className="flex items-center gap-4 mt-1 text-xs text-gray-400">
+                <span className="flex items-center gap-1">
+                  <Users className="h-3 w-3" />
+                  {channel._count?.members || 0} members
+                </span>
+                <span>•</span>
+                <span>{channel._count?.messages || 0} messages</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex-shrink-0 ml-4">
+            {showJoinButton ? (
+              <Button
+                onClick={() => handleJoinChannel(channel.id)}
+                size="sm"
+                disabled={joinChannelMutation.isPending}
+              >
+                {joinChannelMutation.isPending ? 'Joining...' : 'Join Channel'}
+              </Button>
+            ) : (
+              <Button
+                onClick={() => handleLeaveChannel(channel.id)}
+                variant="outline"
+                size="sm"
+                disabled={leaveChannelMutation.isPending}
+              >
+                {leaveChannelMutation.isPending ? 'Leaving...' : 'Leave Channel'}
+              </Button>
+            )}
+          </div>
+        </div>
+      ))}
+      
+      {(isLoadingPublic || isLoadingJoined) && (
+        <div className="text-center py-8 text-gray-500">
+          Loading channels...
+        </div>
+      )}
+
+      {!isLoadingPublic && !isLoadingJoined && channels.length === 0 && (
+        <div className="text-center py-8 text-gray-500">
+          {showJoinButton ? 'No public channels available' : 'You haven\'t joined any channels yet'}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[800px] h-[80vh] flex flex-col p-0">
+        <div className="p-6 border-b">
+          <DialogHeader>
+            <DialogTitle>Browse Channels</DialogTitle>
+            <DialogDescription>
+              Join public channels or manage your channel memberships
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="relative mt-4">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <Input
+              placeholder="Search channels..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </div>
+
+        <Tabs defaultValue="public" className="flex-1 flex flex-col min-h-0">
+          <div className="px-6 border-b">
+            <TabsList className="mb-4">
+              <TabsTrigger value="public">Public Channels</TabsTrigger>
+              <TabsTrigger value="joined">Joined Channels</TabsTrigger>
+            </TabsList>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            <TabsContent value="public" className="mt-0 h-full">
+              <ChannelList channels={availablePublicChannels} showJoinButton={true} />
+            </TabsContent>
+            
+            <TabsContent value="joined" className="mt-0 h-full">
+              <ChannelList channels={joinedChannels} showJoinButton={false} />
+            </TabsContent>
+          </div>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
+  );
+} 

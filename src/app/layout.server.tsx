@@ -9,4 +9,4 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return <ClientLayout>{children}</ClientLayout>;
-}
+} 

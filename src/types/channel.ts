@@ -1,3 +1,5 @@
+import { User } from '@clerk/nextjs/server';
+
 export enum ChannelType {
   PUBLIC = 'PUBLIC',
   PRIVATE = 'PRIVATE',
@@ -7,23 +9,53 @@ export enum ChannelType {
 export interface Channel {
   id: string;
   name: string;
+  description: string | null;
   type: ChannelType;
-  description?: string;
+  createdAt: string;
+  updatedAt: string;
+  ownerId: string;
   _count?: {
     members: number;
     messages: number;
   };
-  members?: ChannelMember[];
   isMember?: boolean;
-  createdAt: string;
+  joinedAt?: string;
+  members?: ChannelMember[];
 }
 
 export interface ChannelMember {
   userId: string;
+  channelId: string;
   role: 'OWNER' | 'ADMIN' | 'MEMBER';
-  user: {
+  joinedAt: string;
+  user?: {
     id: string;
-    name: string;
-    imageUrl: string;
+    name: string | null;
+    imageUrl: string | null;
   };
+}
+
+export interface ChannelWithDetails extends Channel {
+  _count: {
+    members: number;
+    messages: number;
+  };
+  members: ChannelMember[];
+  isMember: boolean;
+}
+
+export interface ChannelGroups {
+  public: ChannelWithDetails[];
+  private: ChannelWithDetails[];
+  dms: ChannelWithDetails[];
+}
+
+export interface OnlineUsers {
+  [userId: string]: boolean;
+}
+
+export interface ChannelActionsDropdownProps {
+  isMember: boolean;
+  onJoin: () => void;
+  onLeave: () => void;
 } 

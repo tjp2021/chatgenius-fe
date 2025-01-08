@@ -1,9 +1,13 @@
+'use client';
+
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { ChannelType } from '@/types/channel';
 import { Button } from '@/components/ui/button';
+import { useSocket } from '@/providers/socket-provider';
 import {
   Dialog,
   DialogContent,
@@ -35,7 +39,10 @@ import { api } from '@/lib/axios';
 import { cn } from '@/lib/utils';
 
 const formSchema = z.object({
-  name: z.string().min(1, 'Channel name is required').max(50),
+  name: z.string()
+    .min(1, 'Channel name is required')
+    .max(50)
+    .regex(/^[a-z0-9-_]+$/, 'Only lowercase letters, numbers, hyphens, and underscores allowed'),
   description: z.string().max(200).optional(),
   type: z.enum(['PUBLIC', 'PRIVATE', 'DM']),
 });
@@ -53,6 +60,8 @@ export function CreateChannelDialog({
 }: CreateChannelDialogProps) {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
+  const router = useRouter();
+  const { socket } = useSocket();
   
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -66,17 +75,29 @@ export function CreateChannelDialog({
   const onSubmit = async (data: FormData) => {
     try {
       const response = await api.post('/channels', data);
+      const newChannel = response.data;
+      
+      // Emit socket event for real-time update
+      if (socket) {
+        socket.emit('channel:created', {
+          channel: newChannel,
+          type: data.type
+        });
+      }
+
       toast({
         title: 'Channel created',
         description: `Successfully created #${data.name}`,
       });
+      
       setOpen(false);
       form.reset();
       onChannelCreated?.();
-    } catch (error) {
+      router.push(`/channels/${newChannel.id}`);
+    } catch (error: any) {
       toast({
         title: 'Error',
-        description: 'Failed to create channel. Please try again.',
+        description: error.response?.data?.message || 'Failed to create channel. Please try again.',
         variant: 'destructive',
       });
     }
@@ -88,7 +109,7 @@ export function CreateChannelDialog({
         <Button 
           variant="outline" 
           className={cn(
-            "text-white hover:text-white hover:bg-emerald-800/50",
+            "bg-emerald-900 text-white hover:text-white hover:bg-emerald-800/50",
             className
           )}
         >
@@ -114,7 +135,7 @@ export function CreateChannelDialog({
                     <Input placeholder="general" {...field} />
                   </FormControl>
                   <FormDescription>
-                    This is your channel's name. No spaces allowed.
+                    Channel name can only contain lowercase letters, numbers, hyphens, and underscores.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -151,7 +172,6 @@ export function CreateChannelDialog({
                     <SelectContent>
                       <SelectItem value="PUBLIC">Public</SelectItem>
                       <SelectItem value="PRIVATE">Private</SelectItem>
-                      <SelectItem value="DM">Direct Message</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormDescription>
