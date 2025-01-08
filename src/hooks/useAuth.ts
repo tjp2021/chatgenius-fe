@@ -27,21 +27,11 @@ export function useAuth() {
   useEffect(() => {
     if (!clerk.isLoaded) return;
 
-    console.log('[Auth] Setting up token getter:', {
-      isLoaded: clerk.isLoaded,
-      isSignedIn: clerk.isSignedIn
-    });
-
     setAuthToken(async () => {
       try {
         const token = await clerk.getToken();
-        console.log('[Auth] Got token:', {
-          hasToken: !!token,
-          tokenLength: token?.length
-        });
         return token;
       } catch (error) {
-        console.error('[Auth] Failed to get token:', error);
         return null;
       }
     });

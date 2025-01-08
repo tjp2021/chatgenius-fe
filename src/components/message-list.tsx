@@ -55,22 +55,27 @@ export function MessageList({ channelId }: MessageListProps) {
   useEffect(() => {
     if (!socket || !isConnected) return;
 
-    const joinChannel = () => {
-      console.log('Joining channel:', channelId);
-      socket.emit('channel:join', channelId);
+    socket.emit('channel:subscribe', { channelId });
+
+    const handleNewMessage = (message: MessageWithUser) => {
+      console.log('New message received:', message);
+      if (message.channelId === channelId) {
+        setMessages(prev => [...prev, message]);
+      }
     };
 
-    // Join channel on initial connection
-    joinChannel();
-
-    socket.on('message:new', onNewMessage);
-    socket.on('connect', joinChannel);
+    socket.on('message:new', handleNewMessage);
+    socket.on('connect', () => {
+      socket.emit('channel:subscribe', { channelId });
+    });
 
     return () => {
       console.log('Leaving channel:', channelId);
-      socket.emit('channel:leave', channelId);
-      socket.off('message:new', onNewMessage);
-      socket.off('connect', joinChannel);
+      socket.emit('channel:unsubscribe', { channelId });
+      socket.off('message:new', handleNewMessage);
+      socket.off('connect', () => {
+        socket.emit('channel:subscribe', { channelId });
+      });
     };
   }, [socket, isConnected, channelId]);
 

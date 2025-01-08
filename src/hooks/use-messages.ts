@@ -4,32 +4,24 @@ import { Message } from '@prisma/client';
 import { useSocket } from '@/providers/socket-provider';
 import { useEffect } from 'react';
 
-export const useChannelMessages = (channelId: string) => {
-  const { socket, isConnected } = useSocket();
-  const queryClient = useQueryClient();
+export function useMessages(channelId: string) {
+  const { socket } = useSocket();
 
   useEffect(() => {
-    if (!socket || !isConnected) return;
+    if (!socket || !channelId) return;
 
-    socket.emit('channel:join', channelId);
-
-    const handleNewMessage = (message: Message) => {
-      queryClient.setQueryData(['messages', channelId], (old: Message[] = []) => {
-        return [...old, message];
-      });
-    };
-
-    socket.on('message:new', handleNewMessage);
+    // Subscribe to channel updates
+    socket.emit('channel:subscribe', { channelId });
 
     return () => {
-      socket.emit('channel:leave', channelId);
-      socket.off('message:new', handleNewMessage);
+      // Unsubscribe when leaving
+      socket.emit('channel:unsubscribe', { channelId });
     };
-  }, [socket, isConnected, channelId, queryClient]);
+  }, [socket, channelId]);
 
   return useQuery({
     queryKey: ['messages', channelId],
     queryFn: () => 
       api.get<Message[]>(`/messages/channel/${channelId}`).then(res => res.data),
   });
-}; 
+} 

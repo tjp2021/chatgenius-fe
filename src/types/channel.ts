@@ -13,14 +13,14 @@ export interface Channel {
   type: ChannelType;
   createdAt: string;
   updatedAt: string;
-  ownerId: string;
-  _count?: {
+  _count: {
     members: number;
     messages: number;
+    lastViewedMessageCount?: number;
   };
-  isMember?: boolean;
+  isMember: boolean;
+  joinedAt: string | null;
   isOwner?: boolean;
-  joinedAt?: string;
   members?: ChannelMember[];
 }
 
@@ -36,23 +36,10 @@ export interface ChannelMember {
   };
 }
 
-export interface ChannelWithDetails extends Channel {
-  members: ChannelMember[];
-  _count: {
-    members: number;
-    messages: number;
-  };
-  isMember: boolean;
-  isOwner: boolean;
-  joinedAt: string;
-  updatedAt: string;
-  ownerId: string;
-}
-
 export interface ChannelGroups {
-  public: ChannelWithDetails[];
-  private: ChannelWithDetails[];
-  dms: ChannelWithDetails[];
+  public: Channel[];
+  private: Channel[];
+  dms: Channel[];
 }
 
 export interface OnlineUsers {
@@ -66,7 +53,7 @@ export interface ChannelActionsDropdownProps {
 }
 
 export interface NavigationState {
-  channels: ChannelWithDetails[];
+  channels: Channel[];
 }
 
 export interface NavigationResponse {

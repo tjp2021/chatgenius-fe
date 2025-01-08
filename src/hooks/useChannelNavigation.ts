@@ -57,9 +57,12 @@ export function useChannelNavigation(): ChannelNavigationState {
   const { data: joinedChannels, isLoading, error } = useQuery<JoinedChannelsResponse>({
     queryKey: ['channels', 'joined'],
     queryFn: async () => {
-      return api.get('/channels/joined');
+      const response = await api.get<JoinedChannelsResponse>('/channels/browse/joined');
+      return response.data;
     },
     staleTime: 30000, // 30 seconds as per PRD
+    retry: 3,
+    retryDelay: 1000,
   });
 
   const currentChannel = stack[currentIndex] || null;
@@ -126,11 +129,6 @@ export function useChannelNavigation(): ChannelNavigationState {
         isTransitioning: true
       }));
 
-      // Mark previous as read (if exists)
-      if (currentChannel) {
-        // Implementation depends on your read state tracking
-      }
-
       // Update navigation stack
       await pushChannel(nextChannelId);
 
@@ -184,7 +182,7 @@ export function useChannelNavigation(): ChannelNavigationState {
 
       // Join channel's socket room
       if (socket && isConnected) {
-        socket.emit('channel:join', channelId);
+        socket.emit('channel:join', { channelId });
       }
 
     } catch (error) {
@@ -205,7 +203,7 @@ export function useChannelNavigation(): ChannelNavigationState {
     if (prevChannel) {
       // Leave current channel's socket room
       if (currentChannel && socket && isConnected) {
-        socket.emit('channel:leave', currentChannel);
+        socket.emit('channel:leave', { channelId: currentChannel });
       }
 
       setNavigation(prev => ({
@@ -217,6 +215,14 @@ export function useChannelNavigation(): ChannelNavigationState {
       router.push(`/channels/${prevChannel}`);
     }
   }, [canGoBack, currentChannel, currentIndex, router, setNavigation, socket, isConnected, stack]);
+
+  const navigateToChannel = useCallback((channelId: string) => {
+    if (!socket) return;
+
+    // Only subscribe to real-time updates
+    socket.emit('channel:subscribe', { channelId });
+    router.push(`/channels/${channelId}`);
+  }, [socket, router]);
 
   return {
     currentChannel,

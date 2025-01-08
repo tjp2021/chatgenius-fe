@@ -23,6 +23,7 @@ interface Channel {
   description: string;
   memberCount: number;
   _count: {
+    members: number;
     messages: number;
   };
   createdAt: string;
@@ -37,17 +38,16 @@ export default function BrowseChannelsPage() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const { data: channels = [], isLoading } = useQuery({
-    queryKey: ['channels', search, sortBy, sortOrder],
+    queryKey: ['channels', 'browse', 'public', search, sortBy, sortOrder],
     queryFn: async () => {
-      const response = await api.get('/channels', {
+      const response = await api.get('/channels/browse/public', {
         params: {
           search,
           sortBy,
-          sortOrder,
-          type: 'PUBLIC'
+          sortOrder
         }
       });
-      return response.data;
+      return response.data.channels;
     },
     staleTime: 30000, // 30 seconds as per PRD
   });
@@ -57,12 +57,12 @@ export default function BrowseChannelsPage() {
 
     // Listen for channel updates
     const handleChannelUpdate = (channelId: string) => {
-      queryClient.invalidateQueries({ queryKey: ['channels'] });
+      queryClient.invalidateQueries({ queryKey: ['channels', 'browse', 'public'] });
     };
 
     // Listen for member count updates
     const handleMemberCountUpdate = ({ channelId, count }: { channelId: string; count: number }) => {
-      queryClient.setQueryData(['channels'], (old: Channel[] = []) => {
+      queryClient.setQueryData(['channels', 'browse', 'public'], (old: Channel[] = []) => {
         return old.map(channel => {
           if (channel.id === channelId) {
             return { ...channel, memberCount: count };
@@ -86,7 +86,7 @@ export default function BrowseChannelsPage() {
       await api.post(`/channels/${channelId}/join`);
       
       // Optimistic update
-      queryClient.setQueryData(['channels'], (old: Channel[] = []) => {
+      queryClient.setQueryData(['channels', 'browse', 'public'], (old: Channel[] = []) => {
         return old.map(channel => {
           if (channel.id === channelId) {
             return { ...channel, memberCount: channel.memberCount + 1 };
@@ -170,7 +170,7 @@ export default function BrowseChannelsPage() {
                   <div className="flex items-center gap-4 mt-2 text-sm text-gray-400">
                     <span className="flex items-center gap-1">
                       <Users className="h-4 w-4" />
-                      {channel.memberCount} members
+                      {channel._count.members} members
                     </span>
                     <span>•</span>
                     <span>{channel._count.messages} messages</span>

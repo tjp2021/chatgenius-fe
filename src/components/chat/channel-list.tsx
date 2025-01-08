@@ -1,27 +1,19 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useUser } from '@clerk/nextjs';
-import { useChannels } from '@/contexts/channel-context';
+import { useChannelContext } from '@/contexts/channel-context';
+import { Channel } from '@/types/channel';
 
-export const ChannelList = () => {
-  const { user } = useUser();
-  const { channels, refreshChannels } = useChannels();
-
-  useEffect(() => {
-    if (user) refreshChannels();
-  }, [user]);
+export function ChannelList() {
+  const { channels } = useChannelContext();
 
   return (
-    <div className="space-y-2">
-      {channels.map((channel) => (
-        <div 
-          key={channel.id}
-          className="px-3 py-2 hover:bg-gray-700 rounded-md cursor-pointer"
-        >
-          # {channel.name}
+    <div>
+      {channels.map((channel: Channel) => (
+        <div key={channel.id}>
+          {channel.name}
         </div>
       ))}
     </div>
   );
-}; 
+} 

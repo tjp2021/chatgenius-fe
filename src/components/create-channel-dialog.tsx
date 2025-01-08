@@ -37,6 +37,7 @@ import {
 import { useToast } from '@/components/ui/use-toast';
 import { api } from '@/lib/axios';
 import { cn } from '@/lib/utils';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 const formSchema = z.object({
   name: z.string()
@@ -62,6 +63,7 @@ export function CreateChannelDialog({
   const { toast } = useToast();
   const router = useRouter();
   const { socket } = useSocket();
+  const queryClient = useQueryClient();
   
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -72,11 +74,12 @@ export function CreateChannelDialog({
     },
   });
 
-  const onSubmit = async (data: FormData) => {
-    try {
-      const response = await api.post('/channels', data);
-      const newChannel = response.data;
-      
+  const createChannelMutation = useMutation({
+    mutationFn: async (data: FormData) => {
+      const response = await api.post('/channels/create', data);
+      return response.data;
+    },
+    onSuccess: (newChannel, data) => {
       // Emit socket event for real-time update
       if (socket) {
         socket.emit('channel:created', {
@@ -84,6 +87,9 @@ export function CreateChannelDialog({
           type: data.type
         });
       }
+
+      // Invalidate and refetch channels
+      queryClient.invalidateQueries({ queryKey: ['channels', 'browse'] });
 
       toast({
         title: 'Channel created',
@@ -94,13 +100,18 @@ export function CreateChannelDialog({
       form.reset();
       onChannelCreated?.();
       router.push(`/channels/${newChannel.id}`);
-    } catch (error: any) {
+    },
+    onError: (error: any) => {
       toast({
         title: 'Error',
         description: error.response?.data?.message || 'Failed to create channel. Please try again.',
         variant: 'destructive',
       });
     }
+  });
+
+  const onSubmit = (data: FormData) => {
+    createChannelMutation.mutate(data);
   };
 
   return (
@@ -182,8 +193,11 @@ export function CreateChannelDialog({
               )}
             />
             <DialogFooter>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                Create Channel
+              <Button 
+                type="submit" 
+                disabled={createChannelMutation.isPending || form.formState.isSubmitting}
+              >
+                {createChannelMutation.isPending ? 'Creating...' : 'Create Channel'}
               </Button>
             </DialogFooter>
           </form>
