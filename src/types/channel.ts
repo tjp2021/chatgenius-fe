@@ -58,4 +58,20 @@ export interface ChannelActionsDropdownProps {
   isMember: boolean;
   onJoin: () => void;
   onLeave: () => void;
+}
+
+export interface NavigationState {
+  channels: ChannelWithDetails[];
+}
+
+export interface NavigationResponse {
+  navigationState: NavigationState;
+}
+
+export interface TransitionResult {
+  success: boolean;
+}
+
+export interface TransitionResponse {
+  transitionResult: TransitionResult;
 } 

@@ -1,3 +1,5 @@
+'use client';
+
 import { TopNav } from "@/components/nav/top-nav";
 import { ChannelSidebar } from "@/components/channel-sidebar";
 

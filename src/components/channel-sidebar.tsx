@@ -2,27 +2,41 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Channel, ChannelType, ChannelWithDetails } from '@/types/channel';
+import { Channel, ChannelType } from '@/types/channel';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/axios';
 import { useAuth } from '@/hooks/useAuth';
-import { ChevronDown, ChevronRight, Hash } from 'lucide-react';
+import { ChevronDown, ChevronRight, Hash, Lock, MessageSquare } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { useChannelNavigation } from '@/hooks/useChannelNavigation';
 import { useSocket } from '@/providers/socket-provider';
 import { BrowseChannelsModal } from '@/components/browse-channels-modal';
 
+interface JoinedChannelsResponse {
+  channels: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    type: 'PUBLIC' | 'PRIVATE' | 'DM';
+    _count: {
+      members: number;
+      messages: number;
+    };
+    createdAt: string;
+    isMember: boolean;
+    joinedAt: string;
+  }>;
+}
+
 interface ChannelGroups {
-  public: ChannelWithDetails[];
-  private: ChannelWithDetails[];
-  dms: ChannelWithDetails[];
+  public: JoinedChannelsResponse['channels'];
+  private: JoinedChannelsResponse['channels'];
+  dms: JoinedChannelsResponse['channels'];
 }
 
 export function ChannelSidebar() {
   const router = useRouter();
   const { socket } = useSocket();
-  const { isAuthenticated, isLoading, userId, isUserSynced } = useAuth();
-  const channelNavigation = useChannelNavigation();
+  const { isAuthenticated, isLoading, isSyncChecking } = useAuth();
   const [isBrowseModalOpen, setIsBrowseModalOpen] = useState(false);
 
   const [channels, setChannels] = useState<ChannelGroups>({
@@ -38,64 +52,72 @@ export function ChannelSidebar() {
   });
 
   const fetchChannels = useCallback(async () => {
-    if (!isAuthenticated || !isUserSynced) {
+    if (!isAuthenticated) {
       setIsLoadingChannels(false);
       return;
     }
     
     try {
       setIsLoadingChannels(true);
-      const response = await api.get<ChannelWithDetails[]>('/channels');
+      const { data } = await api.get<JoinedChannelsResponse>('/channels/browse/joined', {
+        params: {
+          sortBy: 'createdAt',
+          sortOrder: 'desc'
+        }
+      });
       
-      if (Array.isArray(response.data)) {
-        console.log('Raw channel data:', response.data);
-        const grouped = {
-          public: response.data.filter(c => c.type === ChannelType.PUBLIC),
-          private: response.data.filter(c => c.type === ChannelType.PRIVATE),
-          dms: response.data.filter(c => c.type === ChannelType.DM)
-        };
-        console.log('Grouped channels:', grouped);
-        setChannels(grouped);
-      } else {
-        console.error('Invalid response format:', response.data);
-      }
+      const channels = data?.channels ?? [];
+      
+      const grouped = channels.reduce((acc: ChannelGroups, channel) => {
+        switch (channel.type) {
+          case 'PUBLIC':
+            acc.public.push(channel);
+            break;
+          case 'PRIVATE':
+            acc.private.push(channel);
+            break;
+          case 'DM':
+            acc.dms.push(channel);
+            break;
+        }
+        return acc;
+      }, { public: [], private: [], dms: [] });
+
+      setChannels(grouped);
     } catch (error) {
-      console.error('Failed to fetch channels:', error);
+      if ((error as any)?.response?.status !== 404) {
+        console.error('Failed to fetch channels:', error);
+      }
+      setChannels({ public: [], private: [], dms: [] });
     } finally {
       setIsLoadingChannels(false);
     }
-  }, [isAuthenticated, isUserSynced]);
+  }, [isAuthenticated]);
 
-  // Initial load
   useEffect(() => {
-    if (isAuthenticated && isUserSynced && !isLoading) {
+    if (isAuthenticated && !isSyncChecking) {
       fetchChannels();
     }
-  }, [isAuthenticated, isUserSynced, isLoading, fetchChannels]);
+  }, [isAuthenticated, isSyncChecking, fetchChannels]);
 
-  // Socket events
   useEffect(() => {
     if (!socket) return;
 
-    // Listen for channel updates
-    socket.on('channel:created', fetchChannels);
-    socket.on('channel:updated', fetchChannels);
-    socket.on('channel:deleted', fetchChannels);
+    socket.on('channel:update', fetchChannels);
     socket.on('channel:join', fetchChannels);
     socket.on('channel:leave', fetchChannels);
 
     return () => {
-      socket.off('channel:created');
-      socket.off('channel:updated');
-      socket.off('channel:deleted');
+      socket.off('channel:update');
       socket.off('channel:join');
       socket.off('channel:leave');
     };
   }, [socket, fetchChannels]);
 
   const handleChannelSelect = useCallback((channelId: string) => {
-    channelNavigation.pushChannel(channelId);
-  }, [channelNavigation]);
+    const path = `/channels/${channelId}`;
+    router.push(path);
+  }, [router]);
 
   const toggleSection = (section: keyof ChannelGroups) => {
     setExpandedSections(prev => ({
@@ -104,122 +126,104 @@ export function ChannelSidebar() {
     }));
   };
 
-  if (isLoading || !isUserSynced || !isAuthenticated) {
+  if (isLoading || isSyncChecking) {
     return <LoadingSpinner />;
   }
 
   return (
-    <div className="h-screen flex flex-col bg-emerald-900">
-      <div className="px-4 py-3 border-b border-emerald-800">
-        <h2 className="text-lg font-semibold text-white">Channels</h2>
-      </div>
-      
-      <div className="flex-1 overflow-y-auto p-2 space-y-4">
-        {/* Browse Channels Button */}
+    <div className="h-full bg-emerald-900 text-white p-4">
+      <div className="mb-6">
+        <h2 className="font-semibold mb-2">Channels</h2>
         <button
           onClick={() => setIsBrowseModalOpen(true)}
-          className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-emerald-800/50 rounded"
+          className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-emerald-100 hover:text-white hover:bg-emerald-800/50 rounded"
         >
           <Hash className="h-4 w-4" />
           <span>Browse Channels</span>
         </button>
+      </div>
 
-        {/* Browse Channels Modal */}
-        <BrowseChannelsModal
-          open={isBrowseModalOpen}
-          onOpenChange={setIsBrowseModalOpen}
-        />
-
+      <div className="space-y-6">
         {/* Public Channels */}
         <div>
           <button
             onClick={() => toggleSection('public')}
-            className="flex items-center gap-1 text-gray-300 hover:text-white w-full px-2 py-1"
+            className="flex items-center gap-2 text-sm font-medium mb-2 text-emerald-100 hover:text-white w-full"
           >
             {expandedSections.public ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-            <span className="text-sm font-medium">PUBLIC CHANNELS</span>
-            <span className="ml-auto text-xs">{channels.public.length}</span>
+            <Hash className="h-4 w-4" />
+            <span>PUBLIC CHANNELS</span>
+            <span className="text-emerald-300 ml-auto">{channels.public.length}</span>
           </button>
           
-          {expandedSections.public && (
-            <div className="mt-1 space-y-0.5">
-              {channels.public.map(channel => (
-                <button
-                  key={channel.id}
-                  onClick={() => handleChannelSelect(channel.id)}
-                  className={cn(
-                    'flex items-center gap-2 w-full px-4 py-1 text-sm text-gray-300 hover:text-white hover:bg-emerald-800/50 rounded',
-                    channel.id === channelNavigation.currentChannel && 'bg-emerald-800 text-white'
-                  )}
-                >
-                  <Hash className="h-4 w-4" />
-                  <span className="truncate">{channel.name}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          {expandedSections.public && channels.public.map(channel => (
+            <button
+              key={channel.id}
+              onClick={() => handleChannelSelect(channel.id)}
+              className="flex items-center gap-2 w-full px-4 py-1 text-sm text-emerald-100 hover:text-white hover:bg-emerald-800/50 rounded"
+            >
+              <span className="truncate">{channel.name}</span>
+              <span className="ml-auto text-xs text-emerald-300">
+                {channel._count?.members ?? 0} members
+              </span>
+            </button>
+          ))}
         </div>
 
         {/* Private Channels */}
         <div>
           <button
             onClick={() => toggleSection('private')}
-            className="flex items-center gap-1 text-gray-300 hover:text-white w-full px-2 py-1"
+            className="flex items-center gap-2 text-sm font-medium mb-2 text-emerald-100 hover:text-white w-full"
           >
             {expandedSections.private ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-            <span className="text-sm font-medium">PRIVATE CHANNELS</span>
-            <span className="ml-auto text-xs">{channels.private.length}</span>
+            <Lock className="h-4 w-4" />
+            <span>PRIVATE CHANNELS</span>
+            <span className="text-emerald-300 ml-auto">{channels.private.length}</span>
           </button>
           
-          {expandedSections.private && (
-            <div className="mt-1 space-y-0.5">
-              {channels.private.map(channel => (
-                <button
-                  key={channel.id}
-                  onClick={() => handleChannelSelect(channel.id)}
-                  className={cn(
-                    'flex items-center gap-2 w-full px-4 py-1 text-sm text-gray-300 hover:text-white hover:bg-emerald-800/50 rounded',
-                    channel.id === channelNavigation.currentChannel && 'bg-emerald-800 text-white'
-                  )}
-                >
-                  <Hash className="h-4 w-4" />
-                  <span className="truncate">{channel.name}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          {expandedSections.private && channels.private.map(channel => (
+            <button
+              key={channel.id}
+              onClick={() => handleChannelSelect(channel.id)}
+              className="flex items-center gap-2 w-full px-4 py-1 text-sm text-emerald-100 hover:text-white hover:bg-emerald-800/50 rounded"
+            >
+              <span className="truncate">{channel.name}</span>
+              <span className="ml-auto text-xs text-emerald-300">
+                {channel._count?.members ?? 0} members
+              </span>
+            </button>
+          ))}
         </div>
 
         {/* Direct Messages */}
         <div>
           <button
             onClick={() => toggleSection('dms')}
-            className="flex items-center gap-1 text-gray-300 hover:text-white w-full px-2 py-1"
+            className="flex items-center gap-2 text-sm font-medium mb-2 text-emerald-100 hover:text-white w-full"
           >
             {expandedSections.dms ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-            <span className="text-sm font-medium">DIRECT MESSAGES</span>
-            <span className="ml-auto text-xs">{channels.dms.length}</span>
+            <MessageSquare className="h-4 w-4" />
+            <span>DIRECT MESSAGES</span>
+            <span className="text-emerald-300 ml-auto">{channels.dms.length}</span>
           </button>
           
-          {expandedSections.dms && (
-            <div className="mt-1 space-y-0.5">
-              {channels.dms.map(channel => (
-                <button
-                  key={channel.id}
-                  onClick={() => handleChannelSelect(channel.id)}
-                  className={cn(
-                    'flex items-center gap-2 w-full px-4 py-1 text-sm text-gray-300 hover:text-white hover:bg-emerald-800/50 rounded',
-                    channel.id === channelNavigation.currentChannel && 'bg-emerald-800 text-white'
-                  )}
-                >
-                  <Hash className="h-4 w-4" />
-                  <span className="truncate">{channel.name}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          {expandedSections.dms && channels.dms.map(channel => (
+            <button
+              key={channel.id}
+              onClick={() => handleChannelSelect(channel.id)}
+              className="flex items-center gap-2 w-full px-4 py-1 text-sm text-emerald-100 hover:text-white hover:bg-emerald-800/50 rounded"
+            >
+              <span className="truncate">{channel.name}</span>
+            </button>
+          ))}
         </div>
       </div>
+
+      <BrowseChannelsModal
+        open={isBrowseModalOpen}
+        onOpenChange={setIsBrowseModalOpen}
+      />
     </div>
   );
 } 

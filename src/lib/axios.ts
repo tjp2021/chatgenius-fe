@@ -23,13 +23,13 @@ export function setAuthToken(getter: () => Promise<string | null>) {
   tokenGetter = getter;
 }
 
-// Add request interceptor
+// Add request interceptor for auth
 api.interceptors.request.use(async (config) => {
   console.log('[Request] Starting request:', {
     url: config.url,
     method: config.method,
     hasTokenGetter: !!tokenGetter,
-    isInitialized: true,
+    currentHeaders: config.headers,
   });
 
   if (!tokenGetter) {
@@ -42,32 +42,13 @@ api.interceptors.request.use(async (config) => {
     const token = await tokenGetter();
     
     if (token) {
-      // Decode and log token details
-      const [header, payload, signature] = token.split('.');
-      const decodedHeader = JSON.parse(atob(header));
-      const decodedPayload = JSON.parse(atob(payload));
-      
-      console.log('[Request] Token details:', {
-        hasToken: true,
-        tokenLength: token.length,
-        header: decodedHeader,
-        payload: {
-          ...decodedPayload,
-          exp: new Date(decodedPayload.exp * 1000).toISOString(),
-          iat: new Date(decodedPayload.iat * 1000).toISOString(),
-        },
-        signatureLength: signature.length
-      });
-
       config.headers.Authorization = `Bearer ${token}`;
-      console.log('[Request] Headers configured:', {
+      console.log('[Request] Token set in headers:', {
         url: config.url,
         method: config.method,
         hasAuth: true,
-        headers: {
-          ...config.headers,
-          Authorization: `Bearer ${token.substring(0, 20)}...`
-        }
+        authHeader: `Bearer ${token.substring(0, 20)}...`,
+        allHeaders: config.headers
       });
     } else {
       console.warn('[Request] No token available');

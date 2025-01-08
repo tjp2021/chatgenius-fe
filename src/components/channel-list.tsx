@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Channel, ChannelType } from '@prisma/client';
+import { Channel, ChannelType } from '@/types/channel';
 import { Hash, Lock, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/axios';
@@ -10,11 +10,15 @@ import { useSocket } from '@/providers/socket-provider';
 import { CreateChannelDialog } from './create-channel-dialog';
 import { useAuth } from '@clerk/nextjs';
 
+interface ChannelResponse {
+  data: ChannelWithMemberCount[];
+}
+
 interface ChannelWithMemberCount extends Channel {
   _count: {
     members: number;
     messages: number;
-  };
+  }
 }
 
 export function ChannelList() {
@@ -34,7 +38,7 @@ export function ChannelList() {
   const fetchChannels = async () => {
     try {
       setIsLoading(true);
-      const response = await api.get('/channels');
+      const response = await api.get<ChannelResponse>('/channels');
       setChannels(response.data);
     } catch (error) {
       console.error('Failed to fetch channels:', error);

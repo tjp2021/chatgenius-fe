@@ -16,6 +16,14 @@ interface MessageInputProps {
   onMessageSent?: () => void;
 }
 
+interface MessageResponse {
+  data: {
+    id: string;
+    content: string;
+    createdAt: string;
+  }
+}
+
 export function MessageInput({ channelId, onMessageSent }: MessageInputProps) {
   const [content, setContent] = useState('');
   const [isTyping, setIsTyping] = useState(false);

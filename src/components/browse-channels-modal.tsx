@@ -27,48 +27,55 @@ interface BrowseChannelsModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
+interface ChannelResponse {
+  channels: ChannelWithDetails[];
+}
+
 export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalProps) {
   const router = useRouter();
   const { socket } = useSocket();
   const { toast } = useToast();
-  const { userId } = useAuth();
+  const { userId, isAuthenticated, isSyncChecking } = useAuth();
   const [search, setSearch] = useState('');
   const queryClient = useQueryClient();
 
   // Fetch all public channels and joined channels
-  const { data: allPublicChannels = [], isLoading: isLoadingPublic } = useQuery({
+  const { data: publicChannelsResponse, isLoading: isLoadingPublic } = useQuery({
     queryKey: ['channels', 'all-public', search],
-    queryFn: () => api.get('/channels/public', {
+    queryFn: () => api.get<ChannelResponse>('/channels/browse/public', {
       params: {
         search,
-        sortBy: 'name',
-        sortOrder: 'asc'
+        sortBy: 'memberCount',
+        sortOrder: 'desc'
       }
-    }).then(res => res.data),
-    enabled: open
+    }).then(response => response.data),
+    enabled: open && isAuthenticated && !isSyncChecking
   });
 
-  const { data: joinedChannels = [], isLoading: isLoadingJoined } = useQuery({
+  const { data: joinedChannelsResponse, isLoading: isLoadingJoined } = useQuery({
     queryKey: ['channels', 'joined', search],
-    queryFn: () => api.get('/channels/joined', {
+    queryFn: () => api.get<ChannelResponse>('/channels/browse/joined', {
       params: {
         search,
-        sortBy: 'name',
-        sortOrder: 'asc'
+        sortBy: 'createdAt',
+        sortOrder: 'desc'
       }
-    }).then(res => res.data),
-    enabled: open
+    }).then(response => response.data),
+    enabled: open && isAuthenticated && !isSyncChecking
   });
+
+  const allPublicChannels = publicChannelsResponse?.channels ?? [];
+  const joinedChannels = joinedChannelsResponse?.channels ?? [];
 
   // Filter public channels to only show those not joined
-  const joinedChannelIds = new Set(joinedChannels.map((channel: ChannelWithDetails) => channel.id));
+  const joinedChannelIds = new Set(joinedChannels.map(channel => channel.id));
   const availablePublicChannels = allPublicChannels.filter(
-    (channel: ChannelWithDetails) => !joinedChannelIds.has(channel.id)
+    channel => !joinedChannelIds.has(channel.id)
   );
 
   // Join channel mutation
   const joinChannelMutation = useMutation({
-    mutationFn: (channelId: string) => api.post(`/channels/${channelId}/join`),
+    mutationFn: (channelId: string) => api.post<void>(`/channels/${channelId}/join`),
     onSuccess: (_, channelId) => {
       // Invalidate both queries to refresh the lists
       queryClient.invalidateQueries({ queryKey: ['channels', 'all-public'] });
@@ -106,7 +113,7 @@ export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalP
 
   // Leave channel mutation
   const leaveChannelMutation = useMutation({
-    mutationFn: (channelId: string) => api.post(`/channels/${channelId}/leave`),
+    mutationFn: (channelId: string) => api.post<void>(`/channels/${channelId}/leave`),
     onSuccess: (_, channelId) => {
       // Invalidate both queries to refresh the lists
       queryClient.invalidateQueries({ queryKey: ['channels', 'all-public'] });
