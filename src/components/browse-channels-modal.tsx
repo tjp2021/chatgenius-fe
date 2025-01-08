@@ -37,6 +37,8 @@ export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalP
   const { toast } = useToast();
   const { userId, isAuthenticated, isSyncChecking } = useAuth();
   const [search, setSearch] = useState('');
+  const [channelToLeave, setChannelToLeave] = useState<ChannelWithDetails | null>(null);
+  const [leavingChannelId, setLeavingChannelId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   // Fetch all public channels and joined channels
@@ -45,8 +47,8 @@ export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalP
     queryFn: () => api.get<ChannelResponse>('/channels/browse/public', {
       params: {
         search,
-        sortBy: 'memberCount',
-        sortOrder: 'desc'
+        sort_by: 'member_count',
+        sort_order: 'desc'
       }
     }).then(response => response.data),
     enabled: open && isAuthenticated && !isSyncChecking
@@ -57,8 +59,8 @@ export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalP
     queryFn: () => api.get<ChannelResponse>('/channels/browse/joined', {
       params: {
         search,
-        sortBy: 'createdAt',
-        sortOrder: 'desc'
+        sort_by: 'created_at',
+        sort_order: 'desc'
       }
     }).then(response => response.data),
     enabled: open && isAuthenticated && !isSyncChecking
@@ -113,8 +115,9 @@ export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalP
 
   // Leave channel mutation
   const leaveChannelMutation = useMutation({
-    mutationFn: (channelId: string) => api.post<void>(`/channels/${channelId}/leave`),
-    onSuccess: (_, channelId) => {
+    mutationFn: ({ channelId, shouldDelete }: { channelId: string; shouldDelete?: boolean }) => 
+      api.delete<void>(`/channels/${channelId}/leave${shouldDelete !== undefined ? `?shouldDelete=${shouldDelete}` : ''}`),
+    onSuccess: (_, { channelId }) => {
       // Invalidate both queries to refresh the lists
       queryClient.invalidateQueries({ queryKey: ['channels', 'all-public'] });
       queryClient.invalidateQueries({ queryKey: ['channels', 'joined'] });
@@ -129,12 +132,13 @@ export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalP
       });
 
       // Navigate to the next available channel or home
-      const remainingChannels = joinedChannels.filter((c: ChannelWithDetails) => c.id !== channelId);
+      const remainingChannels = joinedChannels.filter(c => c.id !== channelId);
       if (remainingChannels.length > 0) {
         router.push(`/channels/${remainingChannels[0].id}`);
       } else {
         router.push('/');
       }
+      onOpenChange(false);
     },
     onError: (error: any) => {
       console.error('Failed to leave channel:', error);
@@ -154,6 +158,48 @@ export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalP
     }
   });
 
+  const handleLeaveChannel = (channel: ChannelWithDetails) => {
+    if (!userId) {
+      toast({
+        title: 'Error',
+        description: 'You must be logged in to leave a channel.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (channel.isOwner) {
+      // Show confirmation modal for owners
+      setChannelToLeave(channel);
+    } else {
+      // Regular members can leave directly
+      setLeavingChannelId(channel.id);
+      leaveChannelMutation.mutate({ channelId: channel.id });
+    }
+  };
+
+  const handleConfirmLeave = (shouldDelete: boolean) => {
+    if (!channelToLeave) return;
+
+    setLeavingChannelId(channelToLeave.id);
+    
+    if (shouldDelete) {
+      // Delete the channel
+      leaveChannelMutation.mutate({ 
+        channelId: channelToLeave.id, 
+        shouldDelete: true 
+      });
+    } else {
+      // Leave and transfer ownership
+      leaveChannelMutation.mutate({ 
+        channelId: channelToLeave.id, 
+        shouldDelete: false 
+      });
+    }
+    
+    setChannelToLeave(null);
+  };
+
   const handleJoinChannel = (channelId: string) => {
     if (!userId) {
       toast({
@@ -164,18 +210,6 @@ export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalP
       return;
     }
     joinChannelMutation.mutate(channelId);
-  };
-
-  const handleLeaveChannel = (channelId: string) => {
-    if (!userId) {
-      toast({
-        title: 'Error',
-        description: 'You must be logged in to leave a channel.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    leaveChannelMutation.mutate(channelId);
   };
 
   const ChannelList = ({ channels, showJoinButton }: { channels: ChannelWithDetails[], showJoinButton: boolean }) => (
@@ -213,12 +247,12 @@ export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalP
               </Button>
             ) : (
               <Button
-                onClick={() => handleLeaveChannel(channel.id)}
+                onClick={() => handleLeaveChannel(channel)}
                 variant="outline"
                 size="sm"
-                disabled={leaveChannelMutation.isPending}
+                disabled={leaveChannelMutation.isPending && leavingChannelId === channel.id}
               >
-                {leaveChannelMutation.isPending ? 'Leaving...' : 'Leave Channel'}
+                {leaveChannelMutation.isPending && leavingChannelId === channel.id ? 'Leaving...' : 'Leave Channel'}
               </Button>
             )}
           </div>
@@ -279,6 +313,43 @@ export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalP
             </TabsContent>
           </div>
         </Tabs>
+
+        {/* Owner Leave Confirmation Modal */}
+        <Dialog 
+          open={!!channelToLeave} 
+          onOpenChange={(open) => !open && setChannelToLeave(null)}
+        >
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Leave Channel</DialogTitle>
+              <DialogDescription>
+                As the owner of <span className="font-medium">{channelToLeave?.name}</span>, what would you like to do?
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-4 mt-4">
+              <Button
+                onClick={() => handleConfirmLeave(false)}
+                variant="outline"
+                disabled={leaveChannelMutation.isPending}
+              >
+                Leave and Transfer Ownership
+                <span className="text-sm text-muted-foreground ml-2">
+                  (Ownership will be transferred to another member)
+                </span>
+              </Button>
+              <Button
+                onClick={() => handleConfirmLeave(true)}
+                variant="destructive"
+                disabled={leaveChannelMutation.isPending}
+              >
+                Delete Channel
+                <span className="text-sm text-destructive-foreground ml-2">
+                  (This action cannot be undone)
+                </span>
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   );

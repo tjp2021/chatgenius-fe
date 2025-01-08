@@ -10,6 +10,8 @@ import { ChevronDown, ChevronRight, Hash, Lock, MessageSquare } from 'lucide-rea
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { useSocket } from '@/providers/socket-provider';
 import { BrowseChannelsModal } from '@/components/browse-channels-modal';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 interface JoinedChannelsResponse {
   channels: Array<{
@@ -20,6 +22,7 @@ interface JoinedChannelsResponse {
     _count: {
       members: number;
       messages: number;
+      unreadMessages: number;
     };
     createdAt: string;
     isMember: boolean;
@@ -38,6 +41,7 @@ export function ChannelSidebar() {
   const { socket } = useSocket();
   const { isAuthenticated, isLoading, isSyncChecking } = useAuth();
   const [isBrowseModalOpen, setIsBrowseModalOpen] = useState(false);
+  const [channelToLeave, setChannelToLeave] = useState<Channel | null>(null);
 
   const [channels, setChannels] = useState<ChannelGroups>({
     public: [],
@@ -61,8 +65,8 @@ export function ChannelSidebar() {
       setIsLoadingChannels(true);
       const { data } = await api.get<JoinedChannelsResponse>('/channels/browse/joined', {
         params: {
-          sortBy: 'createdAt',
-          sortOrder: 'desc'
+          sort_by: 'created_at',
+          sort_order: 'desc'
         }
       });
       
@@ -163,9 +167,11 @@ export function ChannelSidebar() {
               className="flex items-center gap-2 w-full px-4 py-1 text-sm text-emerald-100 hover:text-white hover:bg-emerald-800/50 rounded"
             >
               <span className="truncate">{channel.name}</span>
-              <span className="ml-auto text-xs text-emerald-300">
-                {channel._count?.members ?? 0} members
-              </span>
+              {channel._count?.unreadMessages > 0 && (
+                <span className="ml-auto text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full">
+                  {channel._count.unreadMessages}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -189,9 +195,11 @@ export function ChannelSidebar() {
               className="flex items-center gap-2 w-full px-4 py-1 text-sm text-emerald-100 hover:text-white hover:bg-emerald-800/50 rounded"
             >
               <span className="truncate">{channel.name}</span>
-              <span className="ml-auto text-xs text-emerald-300">
-                {channel._count?.members ?? 0} members
-              </span>
+              {channel._count?.unreadMessages > 0 && (
+                <span className="ml-auto text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full">
+                  {channel._count.unreadMessages}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -215,6 +223,11 @@ export function ChannelSidebar() {
               className="flex items-center gap-2 w-full px-4 py-1 text-sm text-emerald-100 hover:text-white hover:bg-emerald-800/50 rounded"
             >
               <span className="truncate">{channel.name}</span>
+              {channel._count?.unreadMessages > 0 && (
+                <span className="ml-auto text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full">
+                  {channel._count.unreadMessages}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -224,6 +237,29 @@ export function ChannelSidebar() {
         open={isBrowseModalOpen}
         onOpenChange={setIsBrowseModalOpen}
       />
+
+      <Dialog open={!!channelToLeave}>
+        <DialogContent>
+          <DialogTitle>Leave Channel</DialogTitle>
+          <DialogDescription>
+            As the owner of <span className="font-medium">{channelToLeave?.name}</span>, what would you like to do?
+          </DialogDescription>
+          
+          <Button variant="outline">
+            Leave and Transfer Ownership
+            <span className="text-sm text-muted-foreground ml-2">
+              (Ownership will be transferred to another member)
+            </span>
+          </Button>
+          
+          <Button variant="destructive">
+            Delete Channel
+            <span className="text-sm text-destructive-foreground ml-2">
+              (This action cannot be undone)
+            </span>
+          </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

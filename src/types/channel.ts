@@ -19,6 +19,7 @@ export interface Channel {
     messages: number;
   };
   isMember?: boolean;
+  isOwner?: boolean;
   joinedAt?: string;
   members?: ChannelMember[];
 }
@@ -36,12 +37,16 @@ export interface ChannelMember {
 }
 
 export interface ChannelWithDetails extends Channel {
+  members: ChannelMember[];
   _count: {
     members: number;
     messages: number;
   };
-  members: ChannelMember[];
   isMember: boolean;
+  isOwner: boolean;
+  joinedAt: string;
+  updatedAt: string;
+  ownerId: string;
 }
 
 export interface ChannelGroups {
