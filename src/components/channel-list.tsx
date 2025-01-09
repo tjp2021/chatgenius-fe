@@ -8,12 +8,16 @@ import { api } from '@/lib/axios';
 import { useSocket } from '@/providers/socket-provider';
 import { CreateChannelDialog } from './create-channel-dialog';
 import { useAuth } from '@clerk/nextjs';
-import { useQuery, useQueryClient, UseQueryOptions } from '@tanstack/react-query';
+import { useQuery, useQueryClient, UseQueryOptions, useMutation } from '@tanstack/react-query';
 import { useToast } from '@/components/ui/use-toast';
 import { useState, useEffect } from 'react';
 
 interface ChannelResponse {
   channels: ChannelWithMemberCount[];
+}
+
+interface ChannelMutationResponse {
+  channel: Channel;
 }
 
 interface ChannelWithMemberCount extends Channel {
@@ -30,6 +34,85 @@ export function ChannelList() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
+  const [joiningChannel, setJoiningChannel] = useState<string | null>(null);
+  const [leavingChannel, setLeavingChannel] = useState<string | null>(null);
+
+  // Join channel mutation
+  const joinChannelMutation = useMutation({
+    mutationFn: async (channelId: string) => {
+      console.log('🚀 [JOIN] Starting join mutation for channel:', channelId);
+      
+      // Wait for socket to be ready
+      if (socket && !socket.connected) {
+        console.log('⏳ [JOIN] Waiting for socket connection...');
+        await new Promise<void>((resolve) => {
+          const checkConnection = () => {
+            if (socket.connected) {
+              console.log('✅ [JOIN] Socket connected!');
+              resolve();
+            } else {
+              setTimeout(checkConnection, 100);
+            }
+          };
+          checkConnection();
+        });
+      }
+      
+      const response = await api.post<ChannelMutationResponse>(`/channels/${channelId}/join`);
+      console.log('✅ [JOIN] API response received:', response.data);
+      
+      // Now we know socket is connected
+      if (socket && socket.connected) {
+        console.log('📡 [JOIN] Emitting socket event for channel:', channelId);
+        socket.emit('channel:join', { channelId });
+      } else {
+        console.error('❌ [JOIN] Socket still not connected! Connected status:', socket?.connected);
+      }
+      
+      return response.data;
+    },
+    onSuccess: (data) => {
+      console.log('✨ [JOIN] Mutation success, channel data:', data);
+      queryClient.setQueryData(['channels', 'browse', 'joined'], (old: any) => {
+        if (!old?.channels) return { channels: [data.channel] };
+        if (old.channels.some((ch: Channel) => ch.id === data.channel.id)) return old;
+        console.log('🔄 [JOIN] Updating cache with new channel');
+        return {
+          ...old,
+          channels: [...old.channels, data.channel]
+        };
+      });
+    }
+  });
+
+  // Leave channel mutation
+  const leaveChannelMutation = useMutation({
+    mutationFn: async (channelId: string) => {
+      console.log('🚀 [LEAVE] Starting leave mutation for channel:', channelId);
+      await api.delete(`/channels/${channelId}/leave`);
+      
+      // Add socket emit here too for consistency!
+      if (socket && socket.connected) {
+        console.log('📡 [LEAVE] Emitting socket event for channel:', channelId);
+        socket.emit('channel:leave', { channelId });
+      } else {
+        console.error('❌ [LEAVE] Socket not connected! Connected status:', socket?.connected);
+      }
+      
+      return { channelId };
+    },
+    onSuccess: (data) => {
+      console.log('✨ [LEAVE] Mutation success, removing channel:', data.channelId);
+      queryClient.setQueryData(['channels', 'browse', 'joined'], (old: any) => {
+        if (!old?.channels) return { channels: [] };
+        console.log('🔄 [LEAVE] Updating cache by removing channel');
+        return {
+          ...old,
+          channels: old.channels.filter((ch: Channel) => ch.id !== data.channelId)
+        };
+      });
+    }
+  });
 
   const queryOptions: UseQueryOptions<ChannelResponse, Error> = {
     queryKey: ['channels', 'browse', 'joined'],
@@ -66,8 +149,12 @@ export function ChannelList() {
       queryClient.invalidateQueries({ queryKey: ['channels'] });
     };
 
-    const handleMembershipChange = (data: { channelId: string }) => {
-      queryClient.invalidateQueries({ queryKey: ['channels'] });
+    const handleMembershipChange = (data: { channelId: string, userId: string }) => {
+      // Update UI state for join/leave actions
+      if (data.userId === socket.auth?.userId) {
+        setJoiningChannel(null);
+        setLeavingChannel(null);
+      }
     };
 
     socket.on('channel:update', handleChannelUpdate);
@@ -122,6 +209,44 @@ export function ChannelList() {
 
   const channels = channelsResponse?.channels ?? [];
 
+  const handleJoinChannel = async (channelId: string) => {
+    setJoiningChannel(channelId);
+    try {
+      await joinChannelMutation.mutateAsync(channelId);
+      toast({
+        title: 'Success',
+        description: 'Successfully joined the channel',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to join channel',
+        variant: 'destructive',
+      });
+    } finally {
+      setJoiningChannel(null);
+    }
+  };
+
+  const handleLeaveChannel = async (channelId: string) => {
+    setLeavingChannel(channelId);
+    try {
+      await leaveChannelMutation.mutateAsync(channelId);
+      toast({
+        title: 'Success',
+        description: 'Successfully left the channel',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to leave channel',
+        variant: 'destructive',
+      });
+    } finally {
+      setLeavingChannel(null);
+    }
+  };
+
   return (
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between">
@@ -139,9 +264,10 @@ export function ChannelList() {
               router.push(`/channels/${channel.id}`);
             }}
             className={cn(
-              'w-full flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-muted/50 transition',
+              'w-full flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-muted/50 transition relative',
               channel.id === selectedChannel && 'bg-muted'
             )}
+            disabled={joiningChannel === channel.id || leavingChannel === channel.id}
           >
             {channel.type === ChannelType.PUBLIC ? (
               <Hash className="h-4 w-4" />
@@ -154,6 +280,11 @@ export function ChannelList() {
             <span className="ml-auto text-xs text-muted-foreground">
               {channel._count.messages} messages
             </span>
+            {(joiningChannel === channel.id || leavingChannel === channel.id) && (
+              <div className="absolute inset-0 bg-background/50 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent" />
+              </div>
+            )}
           </button>
         ))}
       </div>

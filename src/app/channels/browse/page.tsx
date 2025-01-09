@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Hash, Users, ArrowUpDown, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -12,10 +12,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/axios';
-import { useSocket } from '@/providers/socket-provider';
-import { toast } from '@/components/ui/use-toast';
+import { useChannels } from '@/hooks/useChannels';
 
 interface Channel {
   id: string;
@@ -31,11 +30,10 @@ interface Channel {
 
 export default function BrowseChannelsPage() {
   const router = useRouter();
-  const { socket, isConnected } = useSocket();
-  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('memberCount');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const { joinChannel } = useChannels();
 
   const { data: channels = [], isLoading } = useQuery({
     queryKey: ['channels', 'browse', 'public', search, sortBy, sortOrder],
@@ -52,57 +50,12 @@ export default function BrowseChannelsPage() {
     staleTime: 30000, // 30 seconds as per PRD
   });
 
-  useEffect(() => {
-    if (!socket || !isConnected) return;
-
-    // Listen for channel updates
-    const handleChannelUpdate = (channelId: string) => {
-      queryClient.invalidateQueries({ queryKey: ['channels', 'browse', 'public'] });
-    };
-
-    // Listen for member count updates
-    const handleMemberCountUpdate = ({ channelId, count }: { channelId: string; count: number }) => {
-      queryClient.setQueryData(['channels', 'browse', 'public'], (old: Channel[] = []) => {
-        return old.map(channel => {
-          if (channel.id === channelId) {
-            return { ...channel, memberCount: count };
-          }
-          return channel;
-        });
-      });
-    };
-
-    socket.on('channel:update', handleChannelUpdate);
-    socket.on('channel:member_count', handleMemberCountUpdate);
-
-    return () => {
-      socket.off('channel:update', handleChannelUpdate);
-      socket.off('channel:member_count', handleMemberCountUpdate);
-    };
-  }, [socket, isConnected, queryClient]);
-
   const handleJoinChannel = async (channelId: string) => {
     try {
-      await api.post(`/channels/${channelId}/join`);
-      
-      // Optimistic update
-      queryClient.setQueryData(['channels', 'browse', 'public'], (old: Channel[] = []) => {
-        return old.map(channel => {
-          if (channel.id === channelId) {
-            return { ...channel, memberCount: channel.memberCount + 1 };
-          }
-          return channel;
-        });
-      });
-
+      await joinChannel(channelId);
       router.push(`/channels/${channelId}`);
     } catch (error) {
       console.error('Failed to join channel:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to join channel. Please try again.',
-        variant: 'destructive',
-      });
     }
   };
 

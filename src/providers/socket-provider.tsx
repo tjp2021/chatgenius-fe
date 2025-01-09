@@ -1,32 +1,20 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
-import { Manager } from 'socket.io-client';
-import { useAuth } from '@clerk/nextjs';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { useAuth, useUser } from '@clerk/nextjs';
 
-interface ChannelState {
-  id: string;
-  subscriptionStatus: 'subscribing' | 'subscribed' | 'unsubscribing' | 'unsubscribed';
-  lastEventTimestamp: number;
-  retryCount: number;
-}
-
-type SocketType = ReturnType<(typeof Manager)['prototype']['socket']>;
+type SocketType = any;
 
 interface SocketContextType {
   socket: SocketType | null;
   isConnected: boolean;
-  channelStates: Map<string, ChannelState>;
-  subscribeToChannel: (channelId: string) => Promise<void>;
-  unsubscribeFromChannel: (channelId: string) => Promise<void>;
+  isAuthReady: boolean;
 }
 
 const SocketContext = createContext<SocketContextType>({
   socket: null,
   isConnected: false,
-  channelStates: new Map(),
-  subscribeToChannel: async () => { throw new Error('Not implemented') },
-  unsubscribeFromChannel: async () => { throw new Error('Not implemented') },
+  isAuthReady: false
 });
 
 export const useSocket = () => {
@@ -36,264 +24,95 @@ export const useSocket = () => {
 export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
   const [socket, setSocket] = useState<SocketType | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [channelStates, setChannelStates] = useState<Map<string, ChannelState>>(new Map());
-  const { getToken, userId } = useAuth();
-  const channelStatesRef = useRef(channelStates);
-
-  // Keep ref in sync with state
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const { getToken } = useAuth();
+  const { user, isLoaded } = useUser();
+  
   useEffect(() => {
-    channelStatesRef.current = channelStates;
-  }, [channelStates]);
-
-  // Load persisted channel states
-  useEffect(() => {
-    const savedStates = localStorage.getItem('channelStates');
-    if (savedStates) {
-      try {
-        const parsed = JSON.parse(savedStates);
-        setChannelStates(new Map(parsed));
-      } catch (error) {
-        console.error('Failed to parse saved channel states:', error);
-        localStorage.removeItem('channelStates');
-      }
-    }
-  }, []);
-
-  // Save channel states
-  useEffect(() => {
-    try {
-      const entries: [string, ChannelState][] = [];
-      channelStates.forEach((value, key) => {
-        entries.push([key, value]);
-      });
-      localStorage.setItem('channelStates', JSON.stringify(entries));
-    } catch (error) {
-      console.error('Failed to save channel states:', error);
-    }
-  }, [channelStates]);
-
-  const subscribeToChannel = useCallback(async (channelId: string) => {
-    if (!socket || !isConnected) {
-      throw new Error('Socket not connected');
-    }
-
-    // Check if already subscribed or subscribing
-    const currentState = channelStatesRef.current.get(channelId);
-    if (currentState?.subscriptionStatus === 'subscribed' || 
-        currentState?.subscriptionStatus === 'subscribing') {
-      return;
-    }
-
-    setChannelStates(prev => {
-      const newMap = new Map(prev);
-      newMap.set(channelId, {
-        id: channelId,
-        subscriptionStatus: 'subscribing',
-        lastEventTimestamp: Date.now(),
-        retryCount: (currentState?.retryCount ?? 0) + 1
-      });
-      return newMap;
-    });
-
-    return new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Subscription timeout'));
-      }, 5000);
-
-      socket.emit('channel:subscribe', { channelId }, (response: { error?: string }) => {
-        clearTimeout(timeout);
-        
-        if (response.error) {
-          setChannelStates(prev => {
-            const newMap = new Map(prev);
-            const current = prev.get(channelId);
-            newMap.set(channelId, {
-              id: channelId,
-              subscriptionStatus: 'unsubscribed',
-              lastEventTimestamp: Date.now(),
-              retryCount: (current?.retryCount ?? 0)
-            });
-            return newMap;
-          });
-          reject(new Error(response.error));
-        } else {
-          setChannelStates(prev => {
-            const newMap = new Map(prev);
-            newMap.set(channelId, {
-              id: channelId,
-              subscriptionStatus: 'subscribed',
-              lastEventTimestamp: Date.now(),
-              retryCount: 0
-            });
-            return newMap;
-          });
-          resolve();
-        }
-      });
-    });
-  }, [socket, isConnected]);
-
-  const unsubscribeFromChannel = useCallback(async (channelId: string) => {
-    if (!socket || !isConnected) {
-      throw new Error('Socket not connected');
-    }
-
-    const currentState = channelStatesRef.current.get(channelId);
-    if (!currentState || currentState.subscriptionStatus === 'unsubscribed' || 
-        currentState.subscriptionStatus === 'unsubscribing') {
-      return;
-    }
-
-    setChannelStates(prev => {
-      const newMap = new Map(prev);
-      newMap.set(channelId, {
-        ...currentState,
-        subscriptionStatus: 'unsubscribing',
-        lastEventTimestamp: Date.now()
-      });
-      return newMap;
-    });
-
-    return new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Unsubscribe timeout'));
-      }, 5000);
-
-      socket.emit('channel:unsubscribe', { channelId }, (response: { error?: string }) => {
-        clearTimeout(timeout);
-        
-        if (response.error) {
-          setChannelStates(prev => {
-            const newMap = new Map(prev);
-            newMap.set(channelId, {
-              ...currentState,
-              subscriptionStatus: 'subscribed',
-              lastEventTimestamp: Date.now()
-            });
-            return newMap;
-          });
-          reject(new Error(response.error));
-        } else {
-          setChannelStates(prev => {
-            const newMap = new Map(prev);
-            newMap.set(channelId, {
-              id: channelId,
-              subscriptionStatus: 'unsubscribed',
-              lastEventTimestamp: Date.now(),
-              retryCount: 0
-            });
-            return newMap;
-          });
-          resolve();
-        }
-      });
-    });
-  }, [socket, isConnected]);
-
-  useEffect(() => {
-    if (!userId) {
-      console.log('No user ID, skipping socket connection');
-      return;
-    }
-
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
-    if (!socketUrl) {
-      console.error('Socket URL not configured');
-      return;
-    }
+    let socketInstance: SocketType | null = null;
 
     const initSocket = async () => {
       try {
+        if (!isLoaded || !user) {
+          console.log('⏳ [SOCKET] Waiting for auth...');
+          setIsAuthReady(false);
+          return;
+        }
+
         const token = await getToken();
-        console.log('Initializing socket connection to:', socketUrl);
-        
-        const manager = new Manager(socketUrl, {
-          auth: { token, userId },
-          transports: ['websocket', 'polling'],
+        if (!token) {
+          console.log('❌ [SOCKET] No token available');
+          setIsAuthReady(false);
+          return;
+        }
+
+        console.log('🔑 [SOCKET] Auth ready, initializing socket with userId:', user.id);
+        setIsAuthReady(true);
+
+        const socketIO = await import('socket.io-client');
+
+        // Configure socket with exact path matching server
+        socketInstance = socketIO.default('http://localhost:3001', {
+          path: '/socket.io', // Changed: Remove /api prefix to match standard Socket.IO path
+          auth: {
+            token,
+            userId: user.id
+          },
+          transports: ['polling', 'websocket'],
+          autoConnect: true,
           reconnection: true,
-          reconnectionAttempts: 5,
+          reconnectionAttempts: 3,
           reconnectionDelay: 1000,
-          reconnectionDelayMax: 5000,
-          timeout: 20000,
+          timeout: 10000
         });
 
-        const socketInstance = manager.socket('/');
+        // Set auth headers after connection
+        if (socketInstance.io?.opts) {
+          socketInstance.io.opts.extraHeaders = {
+            Authorization: `Bearer ${token}`
+          };
+        }
 
         socketInstance.on('connect', () => {
-          console.log('Socket connected successfully');
+          console.log('✨ [SOCKET] Connected! ID:', socketInstance?.id);
           setIsConnected(true);
-
-          // Resubscribe to channels
-          const subscribedChannels: string[] = [];
-          channelStatesRef.current.forEach((state, channelId) => {
-            if (state.subscriptionStatus === 'subscribed') {
-              subscribedChannels.push(channelId);
-            }
-          });
-
-          subscribedChannels.forEach(channelId => {
-            subscribeToChannel(channelId).catch(error => {
-              console.error(`Failed to resubscribe to channel ${channelId}:`, error);
-            });
-          });
         });
 
         socketInstance.on('connect_error', (error: Error) => {
-          console.error('Socket connection error:', error.message);
+          console.error('❌ [SOCKET] Connection error:', error.message);
+          console.error('🔑 [SOCKET] Auth:', socketInstance?.auth);
+          console.error('🌐 [SOCKET] Transport:', socketInstance?.io?.engine?.transport?.name);
+          console.error('🔍 [SOCKET] URL:', socketInstance?.io?.uri);
+          console.error('📍 [SOCKET] Path:', socketInstance?.io?.opts?.path);
           setIsConnected(false);
         });
 
         socketInstance.on('disconnect', (reason: string) => {
-          console.log('Socket disconnected:', reason);
-          setIsConnected(false);
-
-          // Mark all channels as unsubscribed
-          setChannelStates(prev => {
-            const newMap = new Map(prev);
-            prev.forEach((state, channelId) => {
-              if (state.subscriptionStatus === 'subscribed') {
-                newMap.set(channelId, {
-                  ...state,
-                  subscriptionStatus: 'unsubscribed',
-                  lastEventTimestamp: Date.now()
-                });
-              }
-            });
-            return newMap;
-          });
-        });
-
-        socketInstance.on('error', (error: Error) => {
-          console.error('Socket error:', error);
+          console.log('💔 [SOCKET] Disconnected:', reason);
           setIsConnected(false);
         });
 
+        // Store socket in state for consumers
         setSocket(socketInstance);
-
-        return () => {
-          console.log('Cleaning up socket connection');
-          socketInstance.disconnect();
-        };
       } catch (error) {
-        console.error('Failed to initialize socket:', error);
-        return () => {};
+        console.error('❌ [SOCKET] Initialization error:', error);
+        setIsConnected(false);
+        setIsAuthReady(false);
       }
     };
 
-    const cleanup = initSocket();
+    initSocket();
+
     return () => {
-      cleanup.then(cleanupFn => cleanupFn?.());
+      if (socketInstance) {
+        socketInstance.disconnect();
+        socketInstance.removeAllListeners();
+      }
     };
-  }, [getToken, userId, subscribeToChannel]);
+  }, [isLoaded, user, getToken]);
 
   return (
-    <SocketContext.Provider value={{ 
-      socket, 
-      isConnected, 
-      channelStates,
-      subscribeToChannel,
-      unsubscribeFromChannel
-    }}>
+    <SocketContext.Provider value={{ socket, isConnected, isAuthReady }}>
       {children}
     </SocketContext.Provider>
   );

@@ -204,4 +204,199 @@ Learning Lessons [CG-20240108-002]
   4. Create development tools for viewing backend state
   5. Add automated tests for membership state changes
 
+Problem Analysis [CG-20240108-003]
+
+- **ID**: CG-20240108-003
+- **Error Description**: TypeError: Cannot read properties of undefined (reading 'id') in socket-provider.tsx, occurring during channel member events handling, with "Unauthorized" socket errors
+- **Root Cause**: Multiple interconnected issues:
+  1. Mismatched data structure expectations between frontend and backend
+  2. Incorrect event handling for channel member updates
+  3. Race conditions in socket connection and channel state management
+- **Steps to Reproduce**:
+  1. Connect to socket
+  2. Join a channel
+  3. Observe console showing "Unauthorized" errors and undefined property access
+- **Logs**: Socket connection initialization/cleanup messages, member join events, and TypeError in channel mapping
+
+Solution Walkthrough [CG-20240108-003]
+
+- **ID**: CG-20240108-003
+- **Solution Description**: 
+  1. Fixed socket authentication by properly setting auth before connection
+  2. Corrected event data structure handling
+  3. Added proper null checks and error handling
+  4. Implemented proper channel state synchronization
+- **Why It Worked**: 
+  1. Socket auth is now set before connection attempt
+  2. Event handlers now match actual backend data structure
+  3. Robust error handling prevents undefined access
+  4. State management properly tracks channel membership
+
+Learning Lessons [CG-20240108-003]
+
+- **ID**: CG-20240108-003
+- **Pattern Recognition**:
+  1. Assumed data structures without verifying backend contract
+  2. Reactive fixes without understanding root cause
+  3. Missing error handling in critical paths
+- **Prevention Strategies**:
+  1. Define and document API contracts before implementation
+  2. Implement comprehensive error handling from the start
+  3. Add TypeScript interfaces for all socket events
+- **Best Practices Learned**:
+  1. Always verify backend data structures before implementation
+  2. Add proper logging for socket events
+  3. Implement proper cleanup and state management
+  4. Use TypeScript more effectively for type safety
+- **Future Recommendations**:
+  1. Create shared types between frontend and backend
+  2. Implement socket event monitoring/debugging tools
+  3. Add automated tests for socket connection scenarios
+  4. Document socket event structures
+
+Key Insight: Real-time features require more upfront planning and strict contracts between frontend and backend. Most debugging time was spent dealing with mismatched expectations rather than actual functionality issues.
+
+Problem Analysis [CG-20240109-004]
+
+- **ID**: CG-20240109-004
+- **Error Description**: Missing Message Input Component in chat interface, preventing users from sending messages in channels (public, private, or DM). Current implementation only handles message display and socket subscriptions.
+
+- **Root Cause Hypotheses**: 
+  1. Incomplete Message Feature Implementation:
+     - Message list component exists but no input mechanism
+     - Socket events for receiving messages exist but sending events not implemented
+     - Message mutations not integrated with React Query
+  2. Socket Event Gaps:
+     - 'message:new' event listener exists but no 'message:send' implementation
+     - No message acknowledgment handling
+     - No error handling for failed message sends
+  3. State Management Inconsistencies:
+     - No optimistic updates for sent messages
+     - Potential race conditions between socket events and REST API
+     - Missing integration with existing channel context
+
+- **Steps to Reproduce**: 
+  1. Navigate to any channel in the application
+  2. Observe message list implementation in `src/components/message-list.tsx`:
+     - Has message display logic
+     - Socket subscription for receiving messages
+     - No input component or send functionality
+  3. Check `src/hooks/use-messages.ts`:
+     - Only implements GET request for messages
+     - No mutation for sending messages
+  4. Review socket provider implementation:
+     - Has 'message:new' event listener
+     - Missing send message socket events
+
+- **Logs or Relevant Information**:
+  Current message-related implementations:
+  ```typescript
+  // src/hooks/use-messages.ts
+  export function useMessages(channelId: string) {
+    // Only implements query, no mutations
+    return useQuery({
+      queryKey: ['messages', channelId],
+      queryFn: () => 
+        api.get<Message[]>(`/messages/channel/${channelId}`).then(res => res.data),
+    });
+  }
+
+  // src/components/message-list.tsx
+  socket.on('message:new', handleNewMessage);
+  // Missing: socket.emit('message:send', ...)
+  ```
+
+Problem Analysis [CG-20240109-005]
+
+- **ID**: CG-20240109-005
+- **Error Description**: Message synchronization issues between users in chat - messages appear for one user but not the other, indicating a mismatch between our frontend implementation and the backend's expected behavior as documented in FRONTEND_IMPLEMENTATION.md.
+
+- **Root Cause Hypotheses**: 
+  1. Implementation Mismatch:
+     - Our current implementation uses React Query and custom state management
+     - Backend expects direct socket event handling as per FRONTEND_IMPLEMENTATION.md
+     - Message delivery confirmation flow doesn't match backend's expectations
+  2. Event Flow Differences:
+     - Current: Complex flow with React Query cache updates
+     - Expected: Simple direct state updates with immediate delivery acknowledgment
+     - Missing proper event sequence (SEND → SENT → NEW → DELIVERED)
+  3. State Management Complexity:
+     - Multiple sources of truth (React Query cache + socket events)
+     - Race conditions between REST API and socket updates
+     - Overly complex error handling breaking the expected flow
+
+- **Steps to Reproduce**: 
+  1. Two users in same channel
+  2. User 1 sends message "hello"
+  3. Message appears in User 1's chat (green bubble)
+  4. Message doesn't appear or appears late in User 2's chat
+  5. Observe in console:
+     - Socket events not following expected sequence
+     - React Query cache updates conflicting with socket events
+
+- **Logs or Relevant Information**:
+  ```typescript
+  // Current Implementation (problematic)
+  const messagesQuery = useQuery({
+    queryKey: ['messages', channelId],
+    queryFn: () => api.get<Message[]>(`/messages/channel/${channelId}`)
+  });
+
+  // Expected Implementation (from FRONTEND_IMPLEMENTATION.md)
+  const handleNewMessage = (message: Message) => {
+    setMessages(prev => [...prev, message]);
+    socket.emit(MessageEvent.DELIVERED, {
+      messageId: message.id,
+      channelId: message.channelId,
+      status: MessageDeliveryStatus.DELIVERED
+    });
+  };
+  ```
+
+Solution Walkthrough [CG-20240109-005]
+
+- **ID**: CG-20240109-005
+- **Solution Description**: 
+  1. Refactor message handling to exactly match FRONTEND_IMPLEMENTATION.md
+  2. Remove React Query and complex state management
+  3. Implement direct socket event handling
+  4. Follow exact message flow from backend documentation
+
+- **Why It Will Work**: 
+  1. Eliminates state synchronization issues by using single source of truth
+  2. Matches backend's expected event flow exactly
+  3. Simplifies message delivery confirmation
+  4. Removes potential race conditions
+
+- **Implementation Steps**:
+  1. Update `use-messages.ts` to match guide's implementation
+  2. Simplify `MessageInput` component
+  3. Add proper error handling from guide's section 5
+  4. Add offline support from guide's section 6
+
+Learning Lessons [CG-20240109-005]
+
+- **ID**: CG-20240109-005
+- **Pattern Recognition**:
+  1. Over-engineering with additional state management layers
+  2. Not following provided integration documentation exactly
+  3. Adding complexity without clear benefits
+
+- **Prevention Strategies**:
+  1. Always implement integration points exactly as documented
+  2. Avoid adding complexity unless explicitly required
+  3. Use the simplest solution that satisfies requirements
+
+- **Best Practices Learned**:
+  1. Follow integration documentation precisely
+  2. Keep real-time features simple and direct
+  3. Use single source of truth for state
+  4. Match backend's expected event flow
+
+- **Future Recommendations**:
+  1. Document any deviations from provided implementation guides
+  2. Test real-time features with multiple users from the start
+  3. Maintain close alignment with backend expectations
+  4. Add monitoring for message flow and delivery
+
 ==================================================================

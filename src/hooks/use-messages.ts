@@ -1,27 +1,43 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/apiClient';
-import { Message } from '@prisma/client';
+import { useEffect, useState } from 'react';
 import { useSocket } from '@/providers/socket-provider';
-import { useEffect } from 'react';
+import { Message } from '@/types/message';
 
-export function useMessages(channelId: string) {
+export const useMessages = (channelId: string) => {
   const { socket } = useSocket();
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!socket || !channelId) return;
+    if (!socket) return;
 
-    // Subscribe to channel updates
-    socket.emit('channel:subscribe', { channelId });
+    // Join channel
+    socket.emit('channel:join', { channelId });
+
+    // Listen for messages
+    socket.on('message:new', (message: Message) => {
+      setMessages(prev => [...prev, message]);
+    });
+
+    // Fetch initial messages
+    socket.emit('messages:get', { channelId }, (response: { messages: Message[] }) => {
+      setMessages(response.messages);
+      setIsLoading(false);
+    });
 
     return () => {
-      // Unsubscribe when leaving
-      socket.emit('channel:unsubscribe', { channelId });
+      socket.emit('channel:leave', { channelId });
+      socket.off('message:new');
     };
   }, [socket, channelId]);
 
-  return useQuery({
-    queryKey: ['messages', channelId],
-    queryFn: () => 
-      api.get<Message[]>(`/messages/channel/${channelId}`).then(res => res.data),
-  });
-} 
+  const sendMessage = (content: string) => {
+    if (!socket) return;
+    socket.emit('message:send', { channelId, content });
+  };
+
+  return {
+    messages,
+    isLoading,
+    sendMessage
+  };
+}; 

@@ -42,6 +42,10 @@ interface ChannelLeaveResponse {
   } | null;
 }
 
+interface ChannelMutationResponse {
+  channel: Channel;
+}
+
 export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalProps) {
   const router = useRouter();
   const { socket } = useSocket();
@@ -135,29 +139,69 @@ export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalP
     mutationFn: async (channelId: string) => {
       // Check if already a member
       const isMember = joinedChannels.some(channel => channel.id === channelId);
+      console.log('🔍 [JOIN] Checking membership:', { channelId, isMember });
+      
       if (isMember) {
-        // If already a member, just navigate
+        console.log('⚠️ [JOIN] Already a member, skipping join');
         return { alreadyMember: true };
       }
 
-      // If not a member, join the channel
-      const response = await api.post<void>(`/channels/${channelId}/join`);
+      // Do the API call first
+      console.log('🚀 [JOIN] Starting join API call for channel:', channelId);
+      const response = await api.post<ChannelMutationResponse>(`/channels/${channelId}/join`);
+      console.log('✅ [JOIN] API call successful:', response.data);
+
+      // Now wait for socket with a shorter timeout since we've already joined
+      console.log('⏳ [JOIN] Waiting for socket connection...');
+      let retries = 0;
+      const maxRetries = 6; // 3 seconds total
       
-      // Only emit socket event after successful join
-      socket?.emit('channel:join', { channelId });
+      while (retries < maxRetries) {
+        if (socket?.connected) {
+          console.log('✅ [JOIN] Socket connected and ready');
+          console.log('📡 [JOIN] Emitting join event:', {
+            channelId,
+            socketId: socket.id,
+            auth: socket.auth
+          });
+          socket.emit('channel:join', { channelId });
+          console.log('✨ [JOIN] Join event emitted');
+          break;
+        }
+        console.log(`🔄 [JOIN] Socket not ready, retry ${retries + 1}/${maxRetries}`);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        retries++;
+      }
+
+      if (!socket?.connected) {
+        console.log('⚠️ [JOIN] Socket not connected after retries, but join was successful');
+        // Don't throw - we still joined successfully even if socket isn't ready
+      }
       
-      return { alreadyMember: false };
+      return { alreadyMember: false, channel: response.data.channel };
     },
-    onSuccess: (result, channelId) => {
-      if (!result.alreadyMember) {
+    onSuccess: (data: { alreadyMember: boolean; channel?: Channel }, channelId: string) => {
+      console.log('✅ [JOIN] Mutation success:', { data, channelId });
+      
+      if (!data.alreadyMember) {
+        console.log('🎉 [JOIN] Showing success toast');
         toast({
           title: 'Success',
           description: 'Successfully joined the channel',
         });
       }
       
+      console.log('🚀 [JOIN] Navigating to channel:', channelId);
       router.push(`/channels/${channelId}`);
       onOpenChange(false);
+    },
+    onError: (error: Error) => {
+      console.error('❌ [JOIN] Mutation failed:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to join channel',
+        variant: 'destructive'
+      });
     }
   });
 

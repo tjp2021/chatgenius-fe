@@ -59,6 +59,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/lodash": "^4.17.14",
     "@types/socket.io-client": "^1.4.36",
     "shadcn-ui": "^0.9.4"
   }

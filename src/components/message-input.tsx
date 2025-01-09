@@ -1,124 +1,40 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { SendHorizontal } from 'lucide-react';
-import { useSocket } from '@/providers/socket-provider';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { api } from '@/lib/axios';
+import { useState } from 'react';
 import { Send } from 'lucide-react';
-import { Loader2 } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { toast } from '@/components/ui/use-toast';
 
 interface MessageInputProps {
-  channelId: string;
-  onMessageSent?: () => void;
+  onSend: (content: string) => void;
 }
 
-interface MessageResponse {
-  data: {
-    id: string;
-    content: string;
-    createdAt: string;
-  }
-}
-
-export function MessageInput({ channelId, onMessageSent }: MessageInputProps) {
+export const MessageInput = ({ onSend }: MessageInputProps) => {
   const [content, setContent] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const { socket } = useSocket();
-  const typingTimeoutRef = useRef<NodeJS.Timeout>();
-  const [isLoading, setIsLoading] = useState(false);
 
-  const handleTyping = () => {
-    if (!isTyping) {
-      setIsTyping(true);
-      socket?.emit('channel:typing', channelId);
-    }
-
-    // Clear existing timeout
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-
-    // Set new timeout
-    typingTimeoutRef.current = setTimeout(() => {
-      setIsTyping(false);
-      socket?.emit('channel:stop_typing', channelId);
-    }, 1000);
-  };
-
-  useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!content.trim() || !socket) return;
-
-    try {
-      setIsLoading(true);
-      
-      // Emit message through socket
-      socket.emit('message:send', {
-        channelId,
-        content: content.trim()
-      });
-
-      // Clear input immediately
-      setContent('');
-      
-    } catch (error) {
-      console.error('Failed to send message:', error);
-      toast({
-        title: "Error",
-        description: "Failed to send message. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit(e);
-    }
+    if (!content.trim()) return;
+    onSend(content);
+    setContent('');
   };
 
   return (
-    <div className="px-4 py-3 bg-white border-t">
-      <form onSubmit={handleSubmit} className="flex items-center gap-2">
-        <Input
+    <form onSubmit={handleSubmit} className="p-4 border-t">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
           value={content}
-          onChange={(e) => {
-            setContent(e.target.value);
-            handleTyping();
-          }}
-          onKeyDown={handleKeyDown}
+          onChange={(e) => setContent(e.target.value)}
           placeholder="Type a message..."
-          className="flex-1 bg-white text-gray-900 border-gray-200"
+          className="flex-1 px-4 py-2 rounded-full border focus:outline-none focus:ring-2 focus:ring-emerald-500"
         />
-        <Button 
-          type="submit" 
-          size="icon"
-          className="bg-emerald-600 hover:bg-emerald-700 text-white"
-          disabled={isLoading || !content.trim()}
+        <button
+          type="submit"
+          disabled={!content.trim()}
+          className="p-2 rounded-full bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Send className="h-4 w-4" />
-          )}
-        </Button>
-      </form>
-    </div>
+          <Send className="w-5 h-5" />
+        </button>
+      </div>
+    </form>
   );
-} 
+}; 
