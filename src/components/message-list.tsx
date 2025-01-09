@@ -17,15 +17,21 @@ export const MessageList = ({ channelId }: MessageListProps) => {
 
   // Handle auto-scrolling
   useEffect(() => {
-    if (!shouldAutoScroll || !bottomRef.current || !containerRef.current) return;
+    if (!bottomRef.current || !containerRef.current) return;
 
     const container = containerRef.current;
-    const isScrolledToBottom = container.scrollHeight - container.scrollTop === container.clientHeight;
     
-    if (isScrolledToBottom) {
+    // Always scroll to bottom on initial load
+    if (isLoading) {
+      bottomRef.current.scrollIntoView();
+      return;
+    }
+
+    // Otherwise, respect the shouldAutoScroll setting
+    if (shouldAutoScroll) {
       bottomRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages, shouldAutoScroll]);
+  }, [messages, shouldAutoScroll, isLoading]);
 
   // Monitor scroll position to determine if we should auto-scroll
   const handleScroll = () => {
@@ -39,7 +45,14 @@ export const MessageList = ({ channelId }: MessageListProps) => {
   };
 
   if (isLoading) {
-    return <div className="flex-1 p-4">Loading messages...</div>;
+    return (
+      <div className="flex-1 flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-2">
+          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+          <p className="text-sm text-muted-foreground">Loading messages...</p>
+        </div>
+      </div>
+    );
   }
 
   return (

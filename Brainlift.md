@@ -772,8 +772,8 @@ Solution Walkthrough [CG-20240108-001]
   3. Navigating between channels shouldn't affect channel membership
 - **Key Lessons**: 
   1. Socket cleanup should only handle socket event listeners
-  2. Channel membership state is separate from socket connection state
-  3. Component lifecycle events shouldn't trigger database state changes unless explicitly intended
+  2. Database state changes should be tied to user actions
+  3. Component unmounting shouldn't trigger backend state changes unless explicitly intended
 
 Learning Lessons [CG-20240108-001]
 
@@ -794,5 +794,84 @@ Learning Lessons [CG-20240108-001]
   1. Audit other socket-related hooks for similar issues
   2. Document socket lifecycle management guidelines
   3. Add validation to prevent unintended database operations
+
+==================================================================
+
+Problem Analysis [CG-20240109-001]
+
+- **ID**: CG-20240109-001
+- **Error Description**: Real-time chat messages not syncing properly between sender and receiver, with duplicate messages showing inconsistent states (spinner/checkmark)
+- **Root Cause Hypotheses**: 
+  1. Socket event handlers being bound after events were emitted
+  2. Aggressive socket cleanup removing necessary listeners
+  3. Message state desync between optimistic updates and server confirmation
+  4. Race conditions in channel join and message handling
+- **Steps to Reproduce**:
+  1. Open chat in two windows
+  2. Send message from one window
+  3. Observe message not appearing or appearing with incorrect state in other window
+- **Logs or Relevant Information**:
+  - Multiple "[SOCKET JOIN] Event received" logs
+  - Message state inconsistencies between sender/receiver
+  - Socket reconnection patterns
+
+Solution Walkthrough [CG-20240109-001]
+
+- **ID**: CG-20240109-001
+- **Solution Description**: 
+  1. Bind socket event handlers BEFORE joining channel
+  2. Implement comprehensive message matching strategy
+  3. Ensure consistent message state transitions
+  4. Use targeted socket cleanup instead of aggressive removal
+- **Why It Worked**:
+  ```typescript
+  // 1. Proper handler binding order
+  socket.on(MessageEvent.NEW, handlers.handleNewMessage);
+  socket.emit('channel:join', { channelId });
+
+  // 2. Comprehensive message matching
+  const exists = prev.some(m => 
+    m.id === message.id || 
+    m.tempId === message.id ||
+    (m.content === message.content && 
+     m.userId === message.userId && 
+     Math.abs(new Date(m.createdAt).getTime() - new Date(message.createdAt).getTime()) < 5000)
+  );
+
+  // 3. Clear state transitions
+  return {
+    ...msg,
+    id: response.messageId,
+    tempId: undefined,
+    isPending: false,
+    isFailed: false
+  };
+  ```
+- **Key Lessons**: 
+  1. Socket event timing is critical
+  2. Message identity needs multiple matching strategies
+  3. State transitions must be explicit and consistent
+
+Learning Lessons [CG-20240109-001]
+
+- **ID**: CG-20240109-001
+- **Pattern Recognition**: 
+  - Socket events are timing-sensitive
+  - Global state needs careful management
+  - Message identity is complex in real-time systems
+- **Prevention Strategies**:
+  - Bind handlers before any potential event emissions
+  - Use multiple message matching strategies
+  - Keep socket cleanup targeted and specific
+- **Best Practices Learned**:
+  - Avoid aggressive socket cleanup
+  - Track message states explicitly
+  - Log key state transitions
+  - Handle both optimistic and confirmed states
+- **Future Recommendations**:
+  1. Implement message sequence numbers
+  2. Add message delivery guarantees
+  3. Consider message queue for retries
+  4. Add automated tests for state transitions
 
 ==================================================================
