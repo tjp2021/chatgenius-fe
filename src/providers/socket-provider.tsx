@@ -1,143 +1,101 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
-import { useAuth, useUser } from '@clerk/nextjs';
-import { default as socketIO } from 'socket.io-client';
-import type { Socket as ClientSocket } from 'socket.io-client';
-import { SocketContextType } from '@/types/socket';
-import { createSocketConfig } from '@/lib/socket-config';
-import { socketLogger } from '@/lib/socket-logger';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState
+} from 'react';
+import { default as socketIOClient } from 'socket.io-client';
+import { useAuth } from '@/hooks/useAuth';
+import { createSocket } from '@/lib/socket-config';
+
+type SocketContextType = {
+  socket: ReturnType<typeof socketIOClient> | null;
+  isConnected: boolean;
+};
 
 const SocketContext = createContext<SocketContextType>({
   socket: null,
-  isConnected: false,
-  isAuthReady: false
+  isConnected: false
 });
 
 export const useSocket = () => {
   return useContext(SocketContext);
 };
 
-export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
-  const [socket, setSocket] = useState<ClientSocket | null>(null);
+export const SocketProvider = ({ 
+  children 
+}: { 
+  children: React.ReactNode 
+}) => {
+  const [socket, setSocket] = useState<ReturnType<typeof socketIOClient> | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const { getToken } = useAuth();
-  const { user, isLoaded } = useUser();
-  
+  const { token, isAuthenticated, userId } = useAuth();
+
   useEffect(() => {
-    let socketInstance: ClientSocket | null = null;
-    let reconnectTimer: NodeJS.Timeout | null = null;
-
-    const initSocket = async () => {
-      try {
-        if (!isLoaded || !user) {
-          socketLogger.auth.waiting();
-          setIsAuthReady(false);
-          return;
-        }
-
-        const token = await getToken();
-        if (!token) {
-          socketLogger.auth.noToken();
-          setIsAuthReady(false);
-          return;
-        }
-
-        socketLogger.auth.ready(user.id);
-        setIsAuthReady(true);
-
-        // Clean up existing socket if any
-        if (socketInstance) {
-          socketLogger.debug('Cleaning up existing socket connection');
-          socketInstance.disconnect();
-          socketInstance.removeAllListeners();
-        }
-
-        const config = createSocketConfig(token, user.id);
-        socketInstance = socketIO(config.url, {
-          path: config.path,
-          auth: config.auth,
-          ...config.options
-        });
-
-        // Setup event handlers
-        socketInstance.on('connect', () => {
-          socketLogger.connect(socketInstance?.id || 'unknown');
-          setIsConnected(true);
-          if (reconnectTimer) {
-            clearTimeout(reconnectTimer);
-            reconnectTimer = null;
-          }
-        });
-
-        socketInstance.on('connect_error', (error: Error) => {
-          socketLogger.error(error, {
-            Auth: socketInstance?.auth,
-            Transport: socketInstance?.io?.engine?.transport?.name,
-            URL: socketInstance?.io?.uri,
-            Path: socketInstance?.io?.opts?.path
-          });
-          setIsConnected(false);
-
-          // Schedule a reconnect if not already scheduled
-          if (!reconnectTimer) {
-            reconnectTimer = setTimeout(() => {
-              socketLogger.debug('Attempting to reconnect...');
-              initSocket();
-            }, 5000);
-          }
-        });
-
-        socketInstance.on('disconnect', (reason: string) => {
-          socketLogger.disconnect(reason);
-          setIsConnected(false);
-
-          // Handle specific disconnect reasons
-          if (reason === 'io server disconnect' || reason === 'transport close') {
-            // Schedule a reconnect if not already scheduled
-            if (!reconnectTimer) {
-              reconnectTimer = setTimeout(() => {
-                socketLogger.debug('Attempting to reconnect after disconnect...');
-                initSocket();
-              }, 5000);
-            }
-          }
-        });
-
-        // Connect the socket
-        socketInstance.connect();
-        setSocket(socketInstance);
-      } catch (error) {
-        socketLogger.auth.error(error as Error);
+    if (!isAuthenticated || !token || !userId) {
+      if (socket) {
+        socket.disconnect();
+        socket.removeAllListeners();
+        setSocket(null);
         setIsConnected(false);
-        setIsAuthReady(false);
+      }
+      return;
+    }
 
-        // Schedule a retry
-        if (!reconnectTimer) {
-          reconnectTimer = setTimeout(() => {
-            socketLogger.debug('Retrying after error...');
-            initSocket();
-          }, 5000);
-        }
+    // Create socket instance with auth data
+    const newSocket = createSocket(token, userId);
+
+    // Socket event handlers
+    const onConnect = () => {
+      console.log('🔌 Socket connected!', newSocket.id);
+      setIsConnected(true);
+    };
+
+    const onDisconnect = (reason: string) => {
+      console.log('🔌 Socket disconnected:', reason);
+      setIsConnected(false);
+    };
+
+    const onError = (error: Error) => {
+      console.error('🔌 Socket error:', error);
+      setIsConnected(false);
+    };
+
+    const onReconnect = (attempt: number) => {
+      console.log('🔌 Socket reconnected after', attempt, 'attempts');
+      if (newSocket.connected) {
+        newSocket.emit('authenticate', { token, userId });
       }
     };
 
-    initSocket();
+    // Attach event listeners
+    newSocket.on('connect', onConnect);
+    newSocket.on('disconnect', onDisconnect);
+    newSocket.on('error', onError);
+    newSocket.on('reconnect', onReconnect);
 
+    // Connect socket
+    newSocket.connect();
+    setSocket(newSocket);
+
+    // Cleanup
     return () => {
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-      }
-      if (socketInstance) {
-        socketInstance.disconnect();
-        socketInstance.removeAllListeners();
+      if (newSocket) {
+        newSocket.off('connect', onConnect);
+        newSocket.off('disconnect', onDisconnect);
+        newSocket.off('error', onError);
+        newSocket.off('reconnect', onReconnect);
+        newSocket.disconnect();
+        setSocket(null);
+        setIsConnected(false);
       }
     };
-  }, [isLoaded, user, getToken]);
+  }, [isAuthenticated, token, userId]);
 
   return (
-    <SocketContext.Provider value={{ socket, isConnected, isAuthReady }}>
+    <SocketContext.Provider value={{ socket, isConnected }}>
       {children}
     </SocketContext.Provider>
   );

@@ -588,4 +588,211 @@ Learning Lessons [CG-20240109-007]
 
 The key insight is that websockets should be used primarily for real-time notifications and triggers, while the actual state management should rely on a more predictable REST API + query invalidation pattern. This separation of concerns leads to more reliable and maintainable code.
 
+Problem Analysis [CG-20240109-008]
+
+- **ID**: CG-20240109-008
+- **Error Description**: Socket connection instability causing multiple issues:
+  1. Failed POST requests to socket.io endpoint (400 Bad Request)
+  2. Public channels showing 0 despite active chat sessions
+  3. Frequent connect/disconnect cycles
+  4. Authentication token format mismatches
+  5. Race conditions in socket lifecycle management
+
+- **Root Cause Hypotheses**: 
+  1. Socket Configuration Issues:
+     - Incorrect transport order (polling before websocket)
+     - Missing or incorrect auth token format
+     - Aggressive auto-connect behavior
+     - Insufficient timeout and reconnection settings
+  2. Connection Lifecycle Issues:
+     - No explicit connection management
+     - Missing cleanup on reconnection attempts
+     - Race conditions between auth state and socket connection
+  3. Error Recovery Issues:
+     - No systematic reconnection strategy
+     - Missing handling for specific disconnect scenarios
+     - Insufficient error logging and debugging
+
+- **Steps to Reproduce**: 
+  1. Open application and authenticate
+  2. Observe network tab for failed POST requests
+  3. Check console for connect/disconnect cycles
+  4. Verify channel list shows 0 despite being in chat
+  5. Monitor auth token format in requests
+
+- **Logs or Relevant Information**:
+  ```typescript
+  // Failed POST request
+  POST http://localhost:3001/socket.io/?EIO=4&transport=polling 400 (Bad Request)
+  
+  // Console logs showing cycles
+  [SOCKET] Connected! ID: AWNDEmwgfmjarEH9AAAR
+  [SOCKET] Disconnected: io server disconnect
+  [SOCKET] Auth state: {token: "Bearer ey..."}
+  ```
+
+Solution Walkthrough [CG-20240109-008]
+
+- **ID**: CG-20240109-008
+- **Solution Description**: Implemented comprehensive socket connection management system:
+  1. Robust socket configuration
+  2. Proper connection lifecycle management
+  3. Systematic reconnection strategy
+  4. Enhanced error handling and logging
+
+- **Why It Worked**: 
+  1. Socket Configuration Improvements:
+     ```typescript
+     {
+       transports: ['websocket', 'polling'], // Prefer websocket
+       autoConnect: false, // Manual connection control
+       reconnection: true,
+       reconnectionAttempts: 5,
+       reconnectionDelay: 2000,
+       timeout: 20000
+     }
+     ```
+  2. Auth Token Handling:
+     ```typescript
+     auth: { 
+       token: `Bearer ${token}`, // Correct format
+       userId 
+     }
+     ```
+  3. Connection Lifecycle:
+     ```typescript
+     // Clean existing connections
+     if (socketInstance) {
+       socketInstance.disconnect();
+       socketInstance.removeAllListeners();
+     }
+     
+     // Explicit connection
+     socketInstance.connect();
+     ```
+  4. Reconnection Strategy:
+     ```typescript
+     if (!reconnectTimer) {
+       reconnectTimer = setTimeout(() => {
+         socketLogger.debug('Attempting to reconnect...');
+         initSocket();
+       }, 5000);
+     }
+     ```
+
+- **Key Lessons**:
+  1. Socket.io configuration is critical for stability
+  2. Auth token format must match server expectations
+  3. Manual connection management provides better control
+  4. Systematic reconnection handling is essential
+
+Learning Lessons [CG-20240109-008]
+
+- **ID**: CG-20240109-008
+- **Pattern Recognition**:
+  1. Real-time Connection Patterns:
+     - Socket.io prefers websocket over polling
+     - Auth token format is critical for handshake
+     - Connection lifecycle needs explicit management
+  2. Error Patterns:
+     - Most connection issues stem from auth/config
+     - Reconnection needs systematic approach
+     - Different disconnect reasons need different handling
+
+- **Prevention Strategies**:
+  1. Configuration:
+     - Always prefer websocket transport
+     - Use manual connection control
+     - Set appropriate timeouts and delays
+  2. Authentication:
+     - Ensure consistent token format
+     - Validate auth before connection
+     - Handle auth state changes properly
+  3. Error Handling:
+     - Implement systematic reconnection
+     - Log connection state changes
+     - Handle specific disconnect scenarios
+
+- **Best Practices Learned**:
+  1. Socket Configuration:
+     - Use explicit configuration over defaults
+     - Document all config decisions
+     - Test with different transport options
+  2. Connection Management:
+     - Clean up before reconnection
+     - Use manual connection control
+     - Implement proper cleanup on unmount
+  3. Error Recovery:
+     - Implement graduated reconnection delays
+     - Log detailed connection state
+     - Handle all disconnect scenarios
+
+- **Future Recommendations**:
+  1. Monitoring:
+     - Add connection quality metrics
+     - Monitor transport fallbacks
+     - Track reconnection patterns
+  2. Testing:
+     - Add connection resilience tests
+     - Test different network conditions
+     - Validate reconnection behavior
+  3. Documentation:
+     - Document expected connection behavior
+     - Maintain connection troubleshooting guide
+     - Keep config decisions documented
+
+==================================================================
+
+Problem Analysis [CG-20240108-001]
+
+- **ID**: CG-20240108-001
+- **Error Description**: Socket errors showing "Invalid `this.prisma.channelMember.delete()` invocation" and unnecessary channel leave events being triggered, causing database errors and invalid token issues.
+- **Root Cause Hypotheses**: 
+  1. Incorrect socket lifecycle management in useMessages hook
+  2. Confusion between socket connection state and channel membership state
+  3. Unnecessary channel:leave events on component cleanup
+- **Steps to Reproduce**:
+  1. Navigate between channels
+  2. Observe console logs showing unnecessary channel:leave events
+  3. See database errors for attempting to delete non-existent channel members
+- **Logs or Relevant Information**:
+  ```
+  [SOCKET JOIN] Event received:
+  channelId: "bb0f33ae-619e-4194-bfe4-71a8ab14b237"
+  Socket error: Invalid `this.prisma.channelMember.delete()` invocation
+  ```
+
+Solution Walkthrough [CG-20240108-001]
+
+- **ID**: CG-20240108-001
+- **Solution Description**: Removed incorrect channel:leave emit from useMessages hook cleanup function, keeping channel membership management strictly tied to explicit user actions.
+- **Why It Worked**: 
+  1. Channel membership is a database state that should only change on explicit user actions
+  2. Component cleanup (unmounting) should only handle socket event listeners
+  3. Navigating between channels shouldn't affect channel membership
+- **Key Lessons**: 
+  1. Socket cleanup should only handle socket event listeners
+  2. Channel membership state is separate from socket connection state
+  3. Component lifecycle events shouldn't trigger database state changes unless explicitly intended
+
+Learning Lessons [CG-20240108-001]
+
+- **ID**: CG-20240108-001
+- **Pattern Recognition**: 
+  1. Mixing component lifecycle with business logic
+  2. Confusing temporary state (socket connections) with persistent state (channel membership)
+  3. Over-engineering cleanup functions
+- **Prevention Strategies**:
+  1. Keep socket event management separate from business logic
+  2. Only modify database state through explicit user actions
+  3. Use cleanup functions only for cleaning up subscriptions and listeners
+- **Best Practices Learned**:
+  1. Socket cleanup should only remove event listeners
+  2. Database state changes should be tied to user actions
+  3. Component unmounting shouldn't trigger backend state changes
+- **Future Recommendations**:
+  1. Audit other socket-related hooks for similar issues
+  2. Document socket lifecycle management guidelines
+  3. Add validation to prevent unintended database operations
+
 ==================================================================
