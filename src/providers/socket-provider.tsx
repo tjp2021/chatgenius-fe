@@ -2,14 +2,11 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 import { useAuth, useUser } from '@clerk/nextjs';
-
-type SocketType = any;
-
-interface SocketContextType {
-  socket: SocketType | null;
-  isConnected: boolean;
-  isAuthReady: boolean;
-}
+import { default as socketIO } from 'socket.io-client';
+import type { Socket as ClientSocket } from 'socket.io-client';
+import { SocketContextType } from '@/types/socket';
+import { createSocketConfig } from '@/lib/socket-config';
+import { socketLogger } from '@/lib/socket-logger';
 
 const SocketContext = createContext<SocketContextType>({
   socket: null,
@@ -22,88 +19,116 @@ export const useSocket = () => {
 };
 
 export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
-  const [socket, setSocket] = useState<SocketType | null>(null);
+  const [socket, setSocket] = useState<ClientSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const { getToken } = useAuth();
   const { user, isLoaded } = useUser();
   
   useEffect(() => {
-    let socketInstance: SocketType | null = null;
+    let socketInstance: ClientSocket | null = null;
+    let reconnectTimer: NodeJS.Timeout | null = null;
 
     const initSocket = async () => {
       try {
         if (!isLoaded || !user) {
-          console.log('⏳ [SOCKET] Waiting for auth...');
+          socketLogger.auth.waiting();
           setIsAuthReady(false);
           return;
         }
 
         const token = await getToken();
         if (!token) {
-          console.log('❌ [SOCKET] No token available');
+          socketLogger.auth.noToken();
           setIsAuthReady(false);
           return;
         }
 
-        console.log('🔑 [SOCKET] Auth ready, initializing socket with userId:', user.id);
+        socketLogger.auth.ready(user.id);
         setIsAuthReady(true);
 
-        const socketIO = await import('socket.io-client');
-
-        // Configure socket with exact path matching server
-        socketInstance = socketIO.default('http://localhost:3001', {
-          path: '/socket.io', // Changed: Remove /api prefix to match standard Socket.IO path
-          auth: {
-            token,
-            userId: user.id
-          },
-          transports: ['polling', 'websocket'],
-          autoConnect: true,
-          reconnection: true,
-          reconnectionAttempts: 3,
-          reconnectionDelay: 1000,
-          timeout: 10000
-        });
-
-        // Set auth headers after connection
-        if (socketInstance.io?.opts) {
-          socketInstance.io.opts.extraHeaders = {
-            Authorization: `Bearer ${token}`
-          };
+        // Clean up existing socket if any
+        if (socketInstance) {
+          socketLogger.debug('Cleaning up existing socket connection');
+          socketInstance.disconnect();
+          socketInstance.removeAllListeners();
         }
 
+        const config = createSocketConfig(token, user.id);
+        socketInstance = socketIO(config.url, {
+          path: config.path,
+          auth: config.auth,
+          ...config.options
+        });
+
+        // Setup event handlers
         socketInstance.on('connect', () => {
-          console.log('✨ [SOCKET] Connected! ID:', socketInstance?.id);
+          socketLogger.connect(socketInstance?.id || 'unknown');
           setIsConnected(true);
+          if (reconnectTimer) {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+          }
         });
 
         socketInstance.on('connect_error', (error: Error) => {
-          console.error('❌ [SOCKET] Connection error:', error.message);
-          console.error('🔑 [SOCKET] Auth:', socketInstance?.auth);
-          console.error('🌐 [SOCKET] Transport:', socketInstance?.io?.engine?.transport?.name);
-          console.error('🔍 [SOCKET] URL:', socketInstance?.io?.uri);
-          console.error('📍 [SOCKET] Path:', socketInstance?.io?.opts?.path);
+          socketLogger.error(error, {
+            Auth: socketInstance?.auth,
+            Transport: socketInstance?.io?.engine?.transport?.name,
+            URL: socketInstance?.io?.uri,
+            Path: socketInstance?.io?.opts?.path
+          });
           setIsConnected(false);
+
+          // Schedule a reconnect if not already scheduled
+          if (!reconnectTimer) {
+            reconnectTimer = setTimeout(() => {
+              socketLogger.debug('Attempting to reconnect...');
+              initSocket();
+            }, 5000);
+          }
         });
 
         socketInstance.on('disconnect', (reason: string) => {
-          console.log('💔 [SOCKET] Disconnected:', reason);
+          socketLogger.disconnect(reason);
           setIsConnected(false);
+
+          // Handle specific disconnect reasons
+          if (reason === 'io server disconnect' || reason === 'transport close') {
+            // Schedule a reconnect if not already scheduled
+            if (!reconnectTimer) {
+              reconnectTimer = setTimeout(() => {
+                socketLogger.debug('Attempting to reconnect after disconnect...');
+                initSocket();
+              }, 5000);
+            }
+          }
         });
 
-        // Store socket in state for consumers
+        // Connect the socket
+        socketInstance.connect();
         setSocket(socketInstance);
       } catch (error) {
-        console.error('❌ [SOCKET] Initialization error:', error);
+        socketLogger.auth.error(error as Error);
         setIsConnected(false);
         setIsAuthReady(false);
+
+        // Schedule a retry
+        if (!reconnectTimer) {
+          reconnectTimer = setTimeout(() => {
+            socketLogger.debug('Retrying after error...');
+            initSocket();
+          }, 5000);
+        }
       }
     };
 
     initSocket();
 
     return () => {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+      }
       if (socketInstance) {
         socketInstance.disconnect();
         socketInstance.removeAllListeners();

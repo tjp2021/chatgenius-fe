@@ -399,4 +399,193 @@ Learning Lessons [CG-20240109-005]
   3. Maintain close alignment with backend expectations
   4. Add monitoring for message flow and delivery
 
+Problem Analysis [CG-20240109-007]
+
+- **ID**: CG-20240109-007
+- **Error Description**: Frontend websocket synchronization issues in channel membership updates, specifically:
+  1. UI not updating when joining channels despite successful backend operations
+  2. Race conditions between socket events and REST API state
+  3. "Not a member of this channel" errors on page reload
+  4. Inconsistent state between socket events and React Query cache
+
+- **Root Cause Hypotheses**: 
+1. State Management Complexity:
+   ```typescript
+   // Multiple sources of truth
+   - React Query cache (REST API state)
+   - Socket event updates
+   - Optimistic updates
+   - Local state in components
+   ```
+
+2. Timing Issues:
+   ```typescript
+   // Race conditions between:
+   - Socket connection establishment
+   - Initial data fetching
+   - Cache updates
+   - Socket event handling
+   ```
+
+3. Data Flow Inconsistency:
+   ```typescript
+   // Different data structures between:
+   socket event: {
+     channelId, userId, userName, timestamp
+   }
+   vs
+   API response: {
+     id, name, description, type, members, _count, etc.
+   }
+   ```
+
+4. Cache Management Issues:
+   ```typescript
+   // Complex cache manipulation
+   queryClient.setQueryData(['channels', 'browse', 'joined'], (old: any) => {
+     // Complex merging logic
+     // Manual state updates
+     // Potential for inconsistency
+   });
+   ```
+
+- **Steps to Reproduce**: 
+1. Join a channel:
+   ```typescript
+   // Sequence of events:
+   1. REST API call succeeds
+   2. Socket event received
+   3. UI doesn't update properly
+   ```
+
+2. Reload page:
+   ```typescript
+   // Sequence:
+   1. Socket reconnects
+   2. Tries to access channel data
+   3. "Not a member" errors
+   4. Empty channels list
+   ```
+
+Solution Walkthrough [CG-20240109-007]
+
+- **ID**: CG-20240109-007
+- **Solution Description**: 
+1. Simplified State Management:
+   ```typescript
+   // Instead of complex cache manipulation:
+   const handleMemberJoined = (data: any) => {
+     if (data.userId === socket.auth?.userId) {
+       queryClient.invalidateQueries({ 
+         queryKey: ['channels', 'browse', 'joined'] 
+       });
+     }
+   };
+   ```
+
+2. Reliable Data Fetching:
+   ```typescript
+   const { data: channelsData } = useQuery({
+     queryKey: ['channels', 'browse', 'joined'],
+     staleTime: 0,
+     refetchOnMount: true,
+     retry: 3
+   });
+   ```
+
+3. Single Source of Truth:
+   - Use server state as the source of truth
+   - Remove optimistic updates
+   - Rely on refetching for consistency
+
+- **Why It Worked**: 
+1. Eliminated race conditions by:
+   - Removing complex client-side state management
+   - Using server as single source of truth
+   - Simplifying data flow
+
+2. Improved reliability through:
+   - Consistent refetching strategy
+   - Simpler socket event handling
+   - Clear data flow patterns
+
+Learning Lessons [CG-20240109-007]
+
+- **Pattern Recognition**:
+1. Websocket Anti-patterns:
+   - Complex client-side cache manipulation
+   - Multiple sources of truth
+   - Optimistic updates with socket events
+   - Manual state synchronization
+
+2. Successful Patterns:
+   - Server as single source of truth
+   - Simple socket event handlers
+   - Clear data flow
+   - Automatic refetching
+
+- **Prevention Strategies**:
+1. State Management:
+   ```typescript
+   // DO:
+   - Use server as source of truth
+   - Simple socket event handlers
+   - Clear data invalidation
+   
+   // DON'T:
+   - Complex cache manipulation
+   - Manual state merging
+   - Multiple update paths
+   ```
+
+2. Data Flow:
+   ```typescript
+   // DO:
+   - One way data flow
+   - Consistent data structures
+   - Clear update patterns
+   
+   // DON'T:
+   - Bidirectional updates
+   - Mixed data structures
+   - Complex merge logic
+   ```
+
+- **Best Practices Learned**:
+1. Websocket Principles:
+   - Keep socket handlers simple
+   - Use sockets for real-time notifications
+   - Rely on REST API for data state
+   - Clear separation of concerns
+
+2. State Management:
+   - Single source of truth
+   - Clear update patterns
+   - Simple invalidation strategies
+   - Consistent data flow
+
+- **Future Recommendations**:
+1. Architecture:
+   ```typescript
+   // Recommended pattern:
+   socket.on('event', () => {
+     // Simple notification handling
+     queryClient.invalidateQueries()
+   });
+   ```
+
+2. Testing:
+   - Add socket event testing
+   - Test state synchronization
+   - Verify data consistency
+   - Monitor performance
+
+3. Documentation:
+   - Document socket events
+   - Clear data flow diagrams
+   - State management patterns
+   - Update strategies
+
+The key insight is that websockets should be used primarily for real-time notifications and triggers, while the actual state management should rely on a more predictable REST API + query invalidation pattern. This separation of concerns leads to more reliable and maintainable code.
+
 ==================================================================
