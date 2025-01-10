@@ -11,6 +11,15 @@ interface APIResponse<T> {
   error?: string;
 }
 
+interface ChannelLeaveResponse {
+  nextChannel: {
+    channelId: string;
+    type: 'PUBLIC' | 'PRIVATE' | 'DM';
+    lastViewedAt: string;
+    unreadState: boolean;
+  } | null;
+}
+
 export function useApi() {
   const { getToken } = useAuth();
   
@@ -52,9 +61,15 @@ export function useApi() {
     }
   }, [axiosInstance]);
 
-  const leaveChannel = useCallback(async (channelId: string) => {
+  const leaveChannel = useCallback(async (channelId: string, shouldDelete: boolean = false) => {
     try {
-      const response = await axiosInstance.post<ChannelMutationResponse>(`/channels/${channelId}/leave`);
+      const response = await axiosInstance.post<ChannelLeaveResponse>(
+        `/channels/${channelId}/leave`,
+        null,
+        {
+          params: { shouldDelete }
+        }
+      );
       return response.data;
     } catch (error) {
       console.error('Failed to leave channel:', error);

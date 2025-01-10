@@ -110,17 +110,6 @@ export function ChannelSidebar() {
                 <span>PUBLIC CHANNELS</span>
                 <span className="text-emerald-300 ml-2">{groupedChannels.public.length}</span>
               </button>
-              <CreateChannelDialog
-                defaultType="PUBLIC"
-                trigger={
-                  <button
-                    className="p-1 rounded hover:bg-emerald-800/50"
-                    aria-label="Create public channel"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
-                }
-              />
             </div>
             
             {expandedSections.public && groupedChannels.public.map(channel => (
@@ -151,17 +140,6 @@ export function ChannelSidebar() {
                 <span>PRIVATE CHANNELS</span>
                 <span className="text-emerald-300 ml-2">{groupedChannels.private.length}</span>
               </button>
-              <CreateChannelDialog
-                defaultType="PRIVATE"
-                trigger={
-                  <button
-                    className="p-1 rounded hover:bg-emerald-800/50"
-                    aria-label="Create private channel"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
-                }
-              />
             </div>
             
             {expandedSections.private && groupedChannels.private.map(channel => (
@@ -192,17 +170,6 @@ export function ChannelSidebar() {
                 <span>DIRECT MESSAGES</span>
                 <span className="text-emerald-300 ml-2">{groupedChannels.dms.length}</span>
               </button>
-              <CreateChannelDialog
-                defaultType="DM"
-                trigger={
-                  <button
-                    className="p-1 rounded hover:bg-emerald-800/50"
-                    aria-label="Create direct message"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
-                }
-              />
             </div>
             
             {expandedSections.dms && groupedChannels.dms.map(channel => (
@@ -225,18 +192,13 @@ export function ChannelSidebar() {
 
       {/* Create Button */}
       <div className="mt-auto pt-4 border-t border-emerald-800">
-        <CreateChannelDialog
-          defaultType="PUBLIC"
-          trigger={
-            <Button
-              variant="outline"
-              className="w-full justify-start gap-2 bg-emerald-800/50 hover:bg-emerald-800 border-0"
-            >
-              <Plus className="h-4 w-4" />
-              Create Channel
-            </Button>
-          }
-        />
+        <button
+          onClick={() => setIsBrowseModalOpen(true)}
+          className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-emerald-100 hover:text-white hover:bg-emerald-800/50 rounded"
+        >
+          <Hash className="h-4 w-4" />
+          <span>Browse Channels</span>
+        </button>
       </div>
 
       <BrowseChannelsModal
