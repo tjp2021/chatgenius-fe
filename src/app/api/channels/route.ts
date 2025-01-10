@@ -47,17 +47,30 @@ export async function GET(req: Request) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels`, {
+    // Get URL parameters
+    const url = new URL(req.url);
+    const include = url.searchParams.get('include');
+    const queryString = include ? `?include=${include}` : '';
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels${queryString}`, {
       headers: {
         'Authorization': `Bearer ${await auth().getToken()}`
       }
     });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to fetch channels');
+    }
 
     const channels = await response.json();
     return NextResponse.json(channels);
 
   } catch (error) {
     console.error("[CHANNELS_GET]", error);
-    return new NextResponse("Internal Error", { status: 500 });
+    return new NextResponse(
+      error instanceof Error ? error.message : "Internal Error", 
+      { status: 500 }
+    );
   }
-} 
+}

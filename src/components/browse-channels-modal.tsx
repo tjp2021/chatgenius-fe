@@ -105,7 +105,10 @@ export function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsModalProp
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog 
+      open={isOpen} 
+      onOpenChange={(open) => onClose(open)}
+    >
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Browse Channels</DialogTitle>

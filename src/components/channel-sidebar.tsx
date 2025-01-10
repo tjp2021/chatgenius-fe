@@ -35,9 +35,13 @@ export function ChannelSidebar() {
   
   // Debug log when channels update
   useEffect(() => {
-    console.log('Channel sidebar received channels:', channels);
-    console.log('Channel loading state:', isLoadingChannels);
-  }, [channels, isLoadingChannels]);
+    console.log('Channel sidebar loading states:', {
+      authLoading,
+      isLoadingChannels,
+      hasUser: !!user,
+      hasChannels: channels.length > 0
+    });
+  }, [authLoading, isLoadingChannels, user, channels]);
 
   const [expandedSections, setExpandedSections] = useState({
     public: true,
@@ -95,8 +99,9 @@ export function ChannelSidebar() {
     }
   };
 
-  // Show loader only if auth OR channels are loading
-  if (!authLoading || isLoadingChannels) {
+  // Show loader only if auth is still loading or channels are loading and we don't have any channels yet
+  if (!user || (isLoadingChannels && channels.length === 0)) {
+    console.log('Showing loader because:', { hasUser: !!user, isLoadingChannels, channelCount: channels.length });
     return <LoadingSpinner />;
   }
 

@@ -34,9 +34,11 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
 
   const refreshChannels = useCallback(async () => {
     try {
+      console.log('Refreshing channels...');
       setIsLoading(true);
       const token = await getToken();
       if (!token) {
+        console.log('No token available');
         throw new Error('No authentication token available');
       }
 
@@ -51,6 +53,7 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
         throw new Error('Failed to fetch channels');
       }
       const data = await response.json();
+      console.log('Received channels data:', data);
       
       // Only include channels where the user is a member
       const userChannels = data.filter((channel: Channel) => 
@@ -58,11 +61,13 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
       );
       
       setChannels(userChannels);
+      console.log('Channels updated:', userChannels);
     } catch (err) {
       console.error('Error refreshing channels:', err);
       setError(err instanceof Error ? err : new Error('Failed to fetch channels'));
     } finally {
       setIsLoading(false);
+      console.log('Channel refresh complete');
     }
   }, [getToken, userId]);
 
@@ -231,8 +236,13 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
 
   // Initial channel fetch
   useEffect(() => {
+    console.log('Starting initial channel fetch');
+    if (!userId) {
+      console.log('No userId yet, skipping fetch');
+      return;
+    }
     refreshChannels();
-  }, [refreshChannels]);
+  }, [refreshChannels, userId]);
 
   return (
     <ChannelContext.Provider value={{ 
