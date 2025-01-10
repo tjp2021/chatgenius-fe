@@ -86,9 +86,9 @@ export function ChannelSidebar() {
     }));
   };
 
-  const handleLeaveChannel = async (channel: Channel) => {
+  const handleLeaveChannel = async (channelId: string) => {
     try {
-      await leaveChannel(channel.id);
+      await leaveChannel(channelId);
       setChannelToLeave(null);
     } catch (error) {
       console.error('Error leaving channel:', error);
@@ -242,7 +242,7 @@ export function ChannelSidebar() {
             </Button>
             <Button 
               variant="destructive" 
-              onClick={() => channelToLeave && handleLeaveChannel(channelToLeave)}
+              onClick={() => channelToLeave && handleLeaveChannel(channelToLeave.id)}
             >
               Leave Channel
             </Button>

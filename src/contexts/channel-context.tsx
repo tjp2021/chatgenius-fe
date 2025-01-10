@@ -40,8 +40,7 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
         throw new Error('No authentication token available');
       }
 
-      // Explicitly request members data with user info
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels?include=members.user`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels?include=members.user`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -59,7 +58,6 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
       );
       
       setChannels(userChannels);
-      console.log('Channels refreshed:', userChannels);
     } catch (err) {
       console.error('Error refreshing channels:', err);
       setError(err instanceof Error ? err : new Error('Failed to fetch channels'));
@@ -75,7 +73,7 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
         throw new Error('No authentication token available');
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels/${channelId}/join`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels/${channelId}/join`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -84,21 +82,17 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
       });
 
       if (!response.ok) {
-        throw new Error('Failed to join channel');
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to join channel');
       }
 
       // Immediately refresh channels to update the UI
       await refreshChannels();
-
-      // Socket event will handle the channel update for other clients
-      if (socket?.connected) {
-        socket.emit('channel:join', { channelId });
-      }
     } catch (err) {
       console.error('Error joining channel:', err);
       throw err;
     }
-  }, [getToken, socket, refreshChannels]);
+  }, [refreshChannels, getToken]);
 
   const leaveChannel = useCallback(async (channelId: string) => {
     try {
@@ -107,7 +101,7 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
         throw new Error('No authentication token available');
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels/${channelId}/leave`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels/${channelId}/leave?shouldDelete=false`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -116,21 +110,17 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
       });
 
       if (!response.ok) {
-        throw new Error('Failed to leave channel');
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to leave channel');
       }
 
-      // Immediately update local state
-      setChannels(prev => prev.filter(ch => ch.id !== channelId));
-
-      // Socket event will handle the channel update for other clients
-      if (socket?.connected) {
-        socket.emit('channel:leave', { channelId });
-      }
+      // Immediately refresh channels to update the UI
+      await refreshChannels();
     } catch (err) {
       console.error('Error leaving channel:', err);
       throw err;
     }
-  }, [getToken, socket]);
+  }, [refreshChannels, getToken]);
 
   // Handle socket events for real-time updates
   useEffect(() => {
@@ -148,9 +138,10 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
         return;
       }
 
-      setChannels(prev => {
-        // For member_left event, remove the channel if the current user left
-        if (event.type === 'member_left') {
+      // Handle different event types
+      if (event.type === 'member_left') {
+        setChannels(prev => {
+          // If current user left, remove the channel
           if (event.userId === userId) {
             return prev.filter(ch => ch.id !== event.channelId);
           }
@@ -159,17 +150,43 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
             if (ch.id === event.channelId) {
               return {
                 ...ch,
-                members: (ch.members || []).filter(m => m.userId !== event.userId)
+                members: (ch.members || []).filter((m: { userId: string }) => m.userId !== event.userId),
+                _count: {
+                  ...ch._count,
+                  members: (ch._count?.members || 1) - 1
+                }
               };
             }
             return ch;
           });
-        }
+        });
+        return;
+      }
 
-        // For member_joined event or channel updates
-        if (event.channel) {
+      if (event.type === 'member_joined') {
+        setChannels(prev => {
+          return prev.map(ch => {
+            if (ch.id === event.channelId && event.member) {
+              return {
+                ...ch,
+                members: [...(ch.members || []), event.member],
+                _count: {
+                  ...ch._count,
+                  members: (ch._count?.members || 0) + 1
+                }
+              };
+            }
+            return ch;
+          });
+        });
+        return;
+      }
+
+      // For channel updates (created, updated) or any other channel event with channel data
+      if (event.channel) {
+        setChannels(prev => {
           // Only add/update channel if the current user is a member
-          const isMember = event.channel.members?.some(member => member.userId === userId);
+          const isMember = event.channel.members?.some((member: { userId: string }) => member.userId === userId);
           if (!isMember) {
             return prev;
           }
@@ -185,26 +202,30 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
             return [...prev, channelWithMembers];
           }
           return prev.map(ch => ch.id === channelWithMembers.id ? channelWithMembers : ch);
-        }
+        });
+        return;
+      }
 
-        return prev;
-      });
+      // Handle channel deletion
+      if (event.type === 'deleted') {
+        setChannels(prev => prev.filter(ch => ch.id !== event.channelId));
+        return;
+      }
     };
 
-    socket.on('channel:created', handleChannelEvent);
-    socket.on('channel:updated', handleChannelEvent);
-    socket.on('channel:member_joined', handleChannelEvent);
-    socket.on('channel:member_left', handleChannelEvent);
-    socket.on('channel:deleted', (data: { channelId: string }) => {
-      setChannels(prev => prev.filter(ch => ch.id !== data.channelId));
-    });
+    // Subscribe to all channel-related events
+    const events = [
+      'channel:created',
+      'channel:updated',
+      'channel:deleted',
+      'channel:member_joined',
+      'channel:member_left'
+    ];
+
+    events.forEach(event => socket.on(event, handleChannelEvent));
 
     return () => {
-      socket.off('channel:created', handleChannelEvent);
-      socket.off('channel:updated', handleChannelEvent);
-      socket.off('channel:member_joined', handleChannelEvent);
-      socket.off('channel:member_left', handleChannelEvent);
-      socket.off('channel:deleted');
+      events.forEach(event => socket.off(event, handleChannelEvent));
     };
   }, [socket, toast, userId]);
 

@@ -12,6 +12,10 @@ interface APIResponse<T> {
   error?: string;
 }
 
+interface MutationContext {
+  previousChannels: Channel[] | undefined;
+}
+
 export function useChannels() {
   const queryClient = useQueryClient();
   const { socket } = useSocket();
@@ -67,92 +71,95 @@ export function useChannels() {
   // Join channel mutation
   const joinChannelMutation = useMutation<ChannelMutationResponse, Error, string>({
     mutationFn: async (channelId: string) => {
-      const response = await api.getChannels() as APIResponse<Channel[]>;
-      // After successful API call, emit socket event
-      if (response.success && socket?.connected) {
-        socket.emit('channel:join', { channelId });
-      }
-      return response;
-    },
-    onSuccess: (response) => {
-      if (response.success && response.channel) {
-        queryClient.setQueryData(['channels'], (old: Channel[] = []) => {
-          const exists = old.some(ch => ch.id === response.channel!.id);
-          if (exists) {
-            return old.map(ch => ch.id === response.channel!.id ? response.channel! : ch);
+      try {
+        const response = await fetch(`/api/channels/${channelId}/join`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
           }
-          return [...old, response.channel];
         });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to join channel');
+        }
+
+        const data = await response.json();
+        return {
+          success: true,
+          channel: data.channel
+        };
+      } catch (error) {
+        console.error('Error joining channel:', error);
+        throw error;
+      }
+    },
+    onSuccess: (response, channelId) => {
+      // Force refetch to ensure we have the latest data
+      queryClient.invalidateQueries({ queryKey: ['channels'] });
+
+      // Emit the join event
+      if (socket?.connected) {
+        socket.emit('channel:join', { channelId });
       }
     }
   });
 
   // Leave channel mutation
-  const leaveChannelMutation = useMutation<ChannelMutationResponse, Error, string>({
+  const leaveChannelMutation = useMutation<ChannelMutationResponse, Error, string, MutationContext>({
     mutationFn: async (channelId: string) => {
-      const response = await api.leaveChannel(channelId);
-      // After successful API call, emit socket event
-      if (socket?.connected) {
-        socket.emit('channel:leave', { channelId });
-      }
-      return {
-        success: true,
-        channel: undefined
-      };
-    },
-    onSuccess: (response, channelId) => {
-      // Remove channel from cache
-      queryClient.setQueryData(['channels'], (old: Channel[] = []) => {
-        return old.filter(ch => ch.id !== channelId);
-      });
-      
-      // Force refetch to ensure we have the latest data
-      queryClient.invalidateQueries({ queryKey: ['channels'] });
+      try {
+        const response = await fetch(`/api/channels/${channelId}/leave`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
 
-      // Emit socket event for real-time updates
-      if (socket?.connected) {
-        socket.emit('channel:member_left', { channelId });
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to leave channel');
+        }
+
+        return {
+          success: true,
+          channel: data.channel
+        };
+      } catch (error) {
+        console.error('Error leaving channel:', error);
+        if (error instanceof Error) {
+          throw error;
+        }
+        throw new Error('Failed to leave channel');
       }
+    },
+    onMutate: async (channelId) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['channels'] });
+
+      // Snapshot the previous value
+      const previousChannels = queryClient.getQueryData<Channel[]>(['channels']);
+
+      // Optimistically update to the new value
+      queryClient.setQueryData(['channels'], (old: Channel[] = []) => {
+        return old.filter(channel => channel.id !== channelId);
+      });
+
+      // Return a context object with the snapshotted value
+      return { previousChannels };
+    },
+    onError: (err, channelId, context) => {
+      // If the mutation fails, use the context returned from onMutate to roll back
+      if (context?.previousChannels) {
+        queryClient.setQueryData(['channels'], context.previousChannels);
+      }
+    },
+    onSettled: () => {
+      // Refetch after error or success
+      queryClient.invalidateQueries({ queryKey: ['channels'] });
     }
   });
-
-  // Socket event handlers
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleChannelCreated = (data: { channel: Channel }) => {
-      console.log('Channel created event:', data); // Debug log
-      queryClient.setQueryData(['channels'], (old: Channel[] = []) => {
-        const exists = old.some(ch => ch.id === data.channel.id);
-        if (exists) return old;
-        return [...old, data.channel];
-      });
-    };
-
-    const handleChannelUpdated = (data: { channel: Channel }) => {
-      console.log('Channel updated event:', data); // Debug log
-      queryClient.setQueryData(['channels'], (old: Channel[] = []) => {
-        return old.map(ch => ch.id === data.channel.id ? data.channel : ch);
-      });
-    };
-
-    const handleChannelDeleted = (data: { channelId: string }) => {
-      console.log('Channel deleted event:', data); // Debug log
-      queryClient.setQueryData(['channels'], (old: Channel[] = []) => {
-        return old.filter(ch => ch.id !== data.channelId);
-      });
-    };
-
-    socket.on('channel:created', handleChannelCreated);
-    socket.on('channel:updated', handleChannelUpdated);
-    socket.on('channel:deleted', handleChannelDeleted);
-
-    return () => {
-      socket.off('channel:created', handleChannelCreated);
-      socket.off('channel:updated', handleChannelUpdated);
-      socket.off('channel:deleted', handleChannelDeleted);
-    };
-  }, [socket, queryClient]);
 
   console.log('Current channels:', channels); // Debug log
 

@@ -34,7 +34,7 @@ export function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsModalProp
         throw new Error('No authentication token available');
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels?include=members.user`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels?include=members.user`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -83,19 +83,20 @@ export function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsModalProp
     try {
       setIsLeaving(channelId);
       await leaveChannel(channelId);
+      
       // Invalidate both queries to refresh the lists
       await queryClient.invalidateQueries({ queryKey: ['all-channels'] });
       await queryClient.invalidateQueries({ queryKey: ['channels'] });
-      // Force an immediate refetch
-      await queryClient.refetchQueries({ queryKey: ['channels'] });
+      
       toast({
         title: 'Success',
         description: 'You have left the channel',
       });
     } catch (error) {
+      console.error('Failed to leave channel:', error);
       toast({
         title: 'Error',
-        description: 'Failed to leave channel',
+        description: error instanceof Error ? error.message : 'Failed to leave channel',
         variant: 'destructive',
       });
     } finally {
