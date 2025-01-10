@@ -59,6 +59,8 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
         throw new Error('Authentication token not found');
       }
       
+      console.log('Submitting with members:', data.members); // Debug log
+
       // Use HTTP POST to /api/channels endpoint with auth
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
         method: 'POST',
@@ -117,7 +119,16 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
 
   const handleAddMember = (userId: string) => {
     const currentMembers = form.getValues("members") || [];
-    form.setValue("members", [...currentMembers, userId]);
+    
+    // If user is already selected, remove them
+    if (currentMembers.includes(userId)) {
+      form.setValue("members", currentMembers.filter(id => id !== userId));
+    } else {
+      // Otherwise add them
+      form.setValue("members", [...currentMembers, userId]);
+    }
+    
+    console.log('Current members after update:', form.getValues("members"));
   };
 
   return (

@@ -1,11 +1,94 @@
 'use client';
 
+import { useEffect } from 'react';
+import { useAuth, useUser } from '@clerk/nextjs';
 import { Hash, Lock, MessageSquare, HelpCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function ChannelsPage() {
   const router = useRouter();
+  const { userId, getToken, sessionId } = useAuth();
+  const { user, isLoaded, isSignedIn } = useUser();
+
+  useEffect(() => {
+    const syncUserData = async () => {
+      try {
+        const token = await getToken();
+        
+        // Log all available Clerk data
+        console.log('Clerk User Data:', {
+          // Basic auth info
+          userId,
+          sessionId,
+          isSignedIn,
+          
+          // Full user profile
+          email: user?.primaryEmailAddress?.emailAddress,
+          firstName: user?.firstName,
+          lastName: user?.lastName,
+          username: user?.username,
+          imageUrl: user?.imageUrl,
+          
+          // Other useful data
+          emailVerified: user?.primaryEmailAddress?.verification?.status === 'verified',
+          createdAt: user?.createdAt,
+          updatedAt: user?.updatedAt,
+          
+          // All available data
+          fullUserObject: user
+        });
+
+        // Sync full user data to backend
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/me`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            id: userId,
+            email: user?.primaryEmailAddress?.emailAddress,
+            username: user?.username,
+            first_name: user?.firstName,
+            last_name: user?.lastName,
+            full_name: `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
+            image_url: user?.imageUrl,
+            created_at: user?.createdAt,
+            updated_at: user?.updatedAt,
+            email_verified: user?.primaryEmailAddress?.verification?.status === 'verified',
+            last_seen: new Date().toISOString(),
+            is_online: true
+          })
+        });
+
+        const data = await response.json();
+        console.log('Backend sync status:', {
+          sent: {
+            email: user?.primaryEmailAddress?.emailAddress,
+            name: user?.firstName,
+            imageUrl: user?.imageUrl,
+            fullPayload: JSON.parse(JSON.stringify({
+              id: userId,
+              email: user?.primaryEmailAddress?.emailAddress,
+              username: user?.username,
+              first_name: user?.firstName,
+              last_name: user?.lastName,
+              // ... rest of sent data
+            }))
+          },
+          received: data
+        });
+
+      } catch (error) {
+        console.error('Error syncing user:', error);
+      }
+    };
+
+    if (isLoaded && isSignedIn && user) {
+      syncUserData();
+    }
+  }, [userId, getToken, user, isLoaded, isSignedIn]);
 
   return (
     <div className="flex-1 p-6 max-w-3xl mx-auto">

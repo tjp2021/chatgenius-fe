@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { useToast } from './ui/use-toast';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useAuth } from "@clerk/nextjs";
+import { Button } from '@/components/ui/button';
 
 interface UserSearchProps {
   onSelect: (userId: string) => void;
@@ -72,34 +73,44 @@ export function UserSearch({ onSelect, selectedUsers = [], placeholder = 'Search
       )}
 
       <div className="space-y-2">
-        {data?.users.map((user) => (
-          <button
-            key={user.id}
-            onClick={() => handleSelect(user.id)}
-            disabled={selectedUsers.includes(user.id)}
-            className={cn(
-              "w-full flex items-center gap-3 p-2 rounded-lg hover:bg-accent transition-colors",
-              selectedUsers.includes(user.id) && "opacity-50 cursor-not-allowed"
-            )}
-          >
-            <Avatar>
-              <AvatarImage src={user.imageUrl || undefined} alt={user.name || 'User'} />
-              <AvatarFallback>{user.name?.[0] || 'U'}</AvatarFallback>
-            </Avatar>
-            <div className="flex-1 text-left">
-              <p className="font-medium">{user.name}</p>
-              <div className="flex items-center gap-2">
-                <div className={cn(
-                  "h-2 w-2 rounded-full",
-                  user.isOnline ? "bg-green-500" : "bg-gray-300"
-                )} />
-                <span className="text-sm text-muted-foreground">
-                  {user.isOnline ? 'Online' : 'Offline'}
-                </span>
+        {data?.users.map((user) => {
+          const isSelected = selectedUsers.includes(user.id);
+          
+          return (
+            <div
+              key={user.id}
+              className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50"
+            >
+              <div className="flex-1 flex items-center gap-3">
+                <Avatar>
+                  <AvatarImage src={user.imageUrl || undefined} alt={user.name || 'User'} />
+                  <AvatarFallback>{user.name?.[0] || 'U'}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1">
+                  <p className="font-medium">{user.name}</p>
+                  <div className="flex items-center gap-2">
+                    <div className={cn(
+                      "h-2 w-2 rounded-full",
+                      user.isOnline ? "bg-green-500" : "bg-gray-300"
+                    )} />
+                    <span className="text-sm text-muted-foreground">
+                      {user.isOnline ? 'Online' : 'Offline'}
+                    </span>
+                  </div>
+                </div>
               </div>
+
+              <Button
+                type="button"
+                variant={isSelected ? "destructive" : "secondary"}
+                onClick={() => handleSelect(user.id)}
+                className="w-24"
+              >
+                {isSelected ? "Remove" : "Add"}
+              </Button>
             </div>
-          </button>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
