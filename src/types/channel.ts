@@ -26,6 +26,12 @@ export interface CreateChannelDto {
 export interface ChannelMember {
   userId: string;
   role: 'OWNER' | 'ADMIN' | 'MEMBER';
+  user?: {
+    id: string;
+    name: string | null;
+    email: string;
+    imageUrl?: string;
+  };
 }
 
 export interface ChannelMutationResponse {

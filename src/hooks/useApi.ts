@@ -77,9 +77,20 @@ export function useApi() {
     }
   }, [axiosInstance]);
 
+  const getDMDetails = useCallback(async (channelId: string) => {
+    try {
+      const response = await axiosInstance.get(`/channels/${channelId}/dm-details`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to fetch DM details:', error);
+      throw error;
+    }
+  }, [axiosInstance]);
+
   return {
     getChannels,
     joinChannel,
-    leaveChannel
+    leaveChannel,
+    getDMDetails
   };
 }

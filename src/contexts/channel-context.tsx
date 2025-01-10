@@ -29,7 +29,7 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
       setIsLoading(true);
       const token = await getToken();
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels?include=members.user`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

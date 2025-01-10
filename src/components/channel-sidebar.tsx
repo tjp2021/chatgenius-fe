@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/compone
 import { Button } from '@/components/ui/button';
 import { useChannelContext } from '@/contexts/channel-context';
 import { CreateChannelDialog } from '@/components/create-channel-dialog';
+import { useDMDetails } from '@/hooks/useDMDetails';
 
 interface ChannelGroups {
   public: Channel[];
@@ -50,14 +51,14 @@ export function ChannelSidebar() {
     console.log('Processing channel:', channel);
     
     // Always use lowercase for consistency
-    const type = channel.type?.toLowerCase() as keyof ChannelGroups;
-    if (!type) {
+    const lowerType = channel.type?.toLowerCase();
+    if (!lowerType) {
       console.warn('Channel missing type:', channel);
       return acc;
     }
 
     // Add channel to correct group
-    switch (type) {
+    switch (lowerType) {
       case 'public':
         acc.public.push(channel);
         break;
@@ -67,6 +68,8 @@ export function ChannelSidebar() {
       case 'dm':
         acc.dms.push(channel);
         break;
+      default:
+        console.warn('Unknown channel type:', channel.type);
     }
     return acc;
   }, { public: [], private: [], dms: [] });
@@ -179,20 +182,28 @@ export function ChannelSidebar() {
             </button>
           </div>
           
-          {expandedSections.dms && groupedChannels.dms.map(channel => (
-            <button
-              key={channel.id}
-              onClick={() => handleChannelSelect(channel.id)}
-              className="flex items-center gap-2 w-full px-4 py-1 text-sm text-emerald-100 hover:text-white hover:bg-emerald-800/50 rounded"
-            >
-              <span className="truncate">{channel.name}</span>
-              {channel._count && channel._count.messages > (channel._count.lastViewedMessageCount || 0) && (
-                <span className="ml-auto text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full">
-                  {channel._count.messages - (channel._count.lastViewedMessageCount || 0)}
-                </span>
-              )}
-            </button>
-          ))}
+          {expandedSections.dms && groupedChannels.dms.map(channel => {
+            const otherMember = channel.members?.find(member => member.userId !== user?.id);
+            const displayName = otherMember?.user?.name || 
+                              otherMember?.user?.email || 
+                              'Unknown User';
+            
+            return (
+              <button
+                key={channel.id}
+                onClick={() => handleChannelSelect(channel.id)}
+                className="flex items-center gap-2 w-full px-4 py-1 text-sm text-emerald-100 hover:text-white hover:bg-emerald-800/50 rounded"
+              >
+                <MessageSquare className="h-4 w-4" />
+                <span className="truncate">{displayName}</span>
+                {channel._count && channel._count.messages > (channel._count.lastViewedMessageCount || 0) && (
+                  <span className="ml-auto text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full">
+                    {channel._count.messages - (channel._count.lastViewedMessageCount || 0)}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 

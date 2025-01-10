@@ -15,13 +15,33 @@ import { useChannelContext } from "@/contexts/channel-context";
 import { useRouter } from "next/navigation";
 import { useToast } from "./ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { useUser } from "@clerk/nextjs";
 import { UserSearch } from './user-search';
+import { useSocket } from '@/providers/socket-provider';
 
-const channelSchema = z.object({
-  name: z.string().min(3).max(50),
-  description: z.string().max(500).optional(),
-  members: z.array(z.string()).optional(),
-});
+const channelSchema = z.discriminatedUnion('type', [
+  // Public channel schema
+  z.object({
+    type: z.literal('public'),
+    name: z.string().min(3, "Channel name must be at least 3 characters"),
+    description: z.string().optional(),
+    members: z.array(z.string())
+  }),
+  // Private channel schema
+  z.object({
+    type: z.literal('private'),
+    name: z.string().min(3, "Channel name must be at least 3 characters"),
+    description: z.string().optional(),
+    members: z.array(z.string()).min(1, "Please add at least one member")
+  }),
+  // DM channel schema
+  z.object({
+    type: z.literal('dm'),
+    name: z.string().optional(),
+    description: z.string().optional(),
+    members: z.array(z.string()).min(1, "Please select at least one user to message")
+  })
+]);
 
 type ChannelFormData = z.infer<typeof channelSchema>;
 
@@ -31,40 +51,65 @@ interface CreateChannelDialogProps {
 }
 
 export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogProps) => {
-  const [activeTab, setActiveTab] = useState("public");
   const [isLoading, setIsLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'public' | 'private' | 'dm'>('public');
   const router = useRouter();
   const { toast } = useToast();
-  const { getToken, userId } = useAuth();
+  const { getToken } = useAuth();
+  const { user } = useUser();
   const { refreshChannels } = useChannelContext();
-  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
-  const [debugMembers, setDebugMembers] = useState<string[]>([]);
-  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>(() => 
-    userId ? [userId] : []
-  );
-  
-  useEffect(() => {
-    if (userId && !selectedMemberIds.includes(userId)) {
-      setSelectedMemberIds(prev => [userId, ...prev]);
-    }
-  }, [userId]);
+  const { socket } = useSocket();
 
-  const form = useForm<ChannelFormData>({
+  const form = useForm<z.infer<typeof channelSchema>>({
     resolver: zodResolver(channelSchema),
     defaultValues: {
-      name: "",
-      description: "",
-      members: userId ? [userId] : [],
+      type: 'public',
+      name: '',
+      description: '',
+      members: []
     },
+    mode: "onChange"
   });
 
+  // Update type when tab changes
+  useEffect(() => {
+    form.reset({
+      type: activeTab,
+      name: '',
+      description: '',
+      members: []
+    });
+  }, [activeTab, form]);
+
+  const handleAddMember = (userId: string) => {
+    const currentMembers = form.getValues('members');
+    const newMembers = currentMembers.includes(userId)
+      ? currentMembers.filter(id => id !== userId)
+      : [...currentMembers, userId];
+    
+    form.setValue('members', newMembers, { 
+      shouldTouch: true, 
+      shouldDirty: true, 
+      shouldValidate: true 
+    });
+  };
+
   const handleSubmit = async (data: ChannelFormData) => {
+    console.log('Submit handler triggered with data:', data);
+    console.log('Current active tab:', activeTab);
+    console.log('Selected member IDs:', data.members);
+    console.log('Current user ID:', user?.id);
+    console.log('Form state:', form.getValues());
+    console.log('Submit button disabled?', isSubmitDisabled());
+
     try {
       setIsLoading(true);
       const token = await getToken();
+      console.log('Got auth token:', !!token);
 
       // For private channels, ensure we have at least one other member
-      if (activeTab === 'private' && selectedMemberIds.length === 0) {
+      if (activeTab === 'private' && data.members.length === 0) {
+        console.log('Private channel validation failed - no members');
         toast({
           title: 'Error',
           description: 'Please add at least one member to the private channel',
@@ -77,17 +122,16 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
         name: data.name,
         description: data.description || "",
         type: activeTab.toUpperCase(),
-        ownerId: userId, // Explicitly send who's creating the channel
+        ownerId: user?.id,
         ...(activeTab === 'private' && {
-          memberIds: selectedMemberIds // Send selected members
+          memberIds: data.members
+        }),
+        ...(activeTab === 'dm' && {
+          memberIds: data.members.filter(id => id !== user?.id)
         })
       };
 
-      console.log('Creating channel with:', {
-        owner: userId,
-        members: selectedMemberIds,
-        type: activeTab
-      });
+      console.log('Sending request with body:', requestBody);
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
         method: 'POST',
@@ -98,9 +142,12 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
         body: JSON.stringify(requestBody),
       });
 
+      console.log('Response status:', response.status);
+      
       if (!response.ok) {
         const errorData = await response.json();
         console.error('Failed to create channel:', {
+          status: response.status,
           error: errorData,
           sentData: requestBody
         });
@@ -108,14 +155,25 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
       }
 
       const channel = await response.json();
-      console.log('Channel created:', {
+      console.log('Channel created successfully:', {
         channelData: channel,
         requestSent: requestBody
       });
 
+      // First close the dialog and reset form
       onOpenChange(false);
       form.reset();
-      refreshChannels();
+      
+      // Then emit socket event for real-time updates
+      if (socket?.connected) {
+        socket.emit('channel:created', { channel });
+      }
+      
+      // Then refresh channels to update the UI
+      await refreshChannels();
+      
+      // Finally, navigate to the new channel
+      router.push(`/channels/${channel.id}`);
 
     } catch (error) {
       console.error('Channel creation error:', error);
@@ -131,29 +189,21 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
 
   // Disable form submission for DM tab if no members selected
   const isSubmitDisabled = () => {
-    if (activeTab === "dm" && (!form.getValues("members")?.length || form.getValues("members")?.length === 0)) {
-      return true;
-    }
-    return isLoading;
-  };
-
-  // Hide name/description fields for DM tab
-  const showNameDescription = activeTab !== "dm";
-
-  const handleAddMember = (userId: string) => {
-    console.log('Adding/removing member:', userId);
-    
-    setSelectedMemberIds(prev => {
-      const newMembers = prev.includes(userId)
-        ? prev.filter(id => id !== userId)
-        : [...prev, userId];
-        
-      console.log('Updated members:', newMembers);
-      
-      // Update form state as well
-      form.setValue("members", newMembers);
-      return newMembers;
+    const otherMembers = form.getValues('members').filter(id => id !== user?.id);
+    console.log('Submit button check:', {
+      activeTab,
+      otherMembers,
+      selectedMembers: form.getValues('members'),
+      currentUserId: user?.id,
+      nameValue: form.getValues("name"),
+      isLoading
     });
+
+    if (activeTab === "dm") {
+      return otherMembers.length === 0;
+    }
+    // For non-DM channels, require a name
+    return !form.getValues("name") || isLoading;
   };
 
   return (
@@ -163,7 +213,11 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
           <DialogTitle>Create New Channel</DialogTitle>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <Tabs 
+          value={activeTab} 
+          onValueChange={(value: 'public' | 'private' | 'dm') => setActiveTab(value)} 
+          className="w-full"
+        >
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="public">Public</TabsTrigger>
             <TabsTrigger value="private">Private</TabsTrigger>
@@ -172,7 +226,7 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 mt-4">
-              {showNameDescription && (
+              {activeTab !== "dm" && (
                 <>
                   <FormField
                     control={form.control}
@@ -220,7 +274,7 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
                       <FormControl>
                         <UserSearch 
                           onSelect={handleAddMember}
-                          selectedUsers={selectedMemberIds}
+                          selectedUsers={form.getValues('members')}
                           placeholder={activeTab === "dm" ? "Search users to message..." : "Search users to add..."}
                         />
                       </FormControl>
@@ -241,9 +295,23 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
                 </Button>
                 <Button 
                   type="submit" 
-                  disabled={isSubmitDisabled()}
+                  disabled={isLoading || !form.formState.isValid}
+                  onClick={() => {
+                    console.log('Button clicked');
+                    console.log('Detailed form state:', {
+                      isValid: form.formState.isValid,
+                      errors: form.formState.errors,
+                      values: form.getValues(),
+                      selectedMembers: form.getValues('members'),
+                      activeTab,
+                      isDirty: form.formState.isDirty,
+                      dirtyFields: form.formState.dirtyFields,
+                      touchedFields: form.formState.touchedFields
+                    });
+                  }}
+                  className={!form.formState.isValid ? "opacity-50 cursor-not-allowed" : ""}
                 >
-                  {isLoading ? "Creating..." : "Create Channel"}
+                  {isLoading ? "Creating..." : `Create Channel${!form.formState.isValid ? ' (Validation Failed)' : ''}`}
                 </Button>
               </div>
             </form>
