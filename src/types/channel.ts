@@ -5,23 +5,19 @@ export type ChannelType = 'PUBLIC' | 'PRIVATE' | 'DM';
 export interface Channel {
   id: string;
   name: string;
-  type: ChannelType;
   description?: string;
-  ownerId: string;
+  type: 'PUBLIC' | 'PRIVATE' | 'DM';
   createdAt: string;
-  updatedAt: string;
-  _count?: {
+  _count: {
     members: number;
     messages: number;
-    lastViewedMessageCount?: number;
   };
-  members?: ChannelMember[];
 }
 
 export interface CreateChannelDto {
   name: string;
-  type: ChannelType;
   description?: string;
+  type: 'PUBLIC' | 'PRIVATE' | 'DM';
 }
 
 export interface ChannelMember {

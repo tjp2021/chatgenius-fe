@@ -1,134 +1,209 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { useApi } from '@/hooks/useApi';
-import { toast } from 'sonner';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { UserPicker } from "./user-picker";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Textarea } from "./ui/textarea";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "./ui/form";
+import { useChannelContext } from "@/contexts/channel-context";
+import { useRouter } from "next/navigation";
+import { useToast } from "./ui/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
-const ChannelType = {
-  PUBLIC: 'PUBLIC',
-  PRIVATE: 'PRIVATE',
-  DM: 'DM'
-} as const;
-
-const formSchema = z.object({
-  name: z.string().min(1, 'Channel name is required'),
-  type: z.enum(['PUBLIC', 'PRIVATE', 'DM']),
-  description: z.string().optional()
+const channelSchema = z.object({
+  name: z.string().min(3).max(50),
+  description: z.string().max(500).optional(),
+  members: z.array(z.string()).optional(),
 });
 
-type FormData = z.infer<typeof formSchema>;
+type ChannelFormData = z.infer<typeof channelSchema>;
 
 interface CreateChannelDialogProps {
-  defaultType?: keyof typeof ChannelType;
-  trigger?: React.ReactNode;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
-export function CreateChannelDialog({ 
-  defaultType = 'PUBLIC',
-  trigger
-}: CreateChannelDialogProps) {
+export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogProps) => {
+  const [activeTab, setActiveTab] = useState("public");
+  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
-  const api = useApi();
-  const [open, setOpen] = useState(false);
-
-  const form = useForm<FormData>({
-    resolver: zodResolver(formSchema),
+  const { toast } = useToast();
+  const { getToken } = useAuth();
+  
+  const form = useForm<ChannelFormData>({
+    resolver: zodResolver(channelSchema),
     defaultValues: {
-      name: '',
-      type: ChannelType[defaultType],
-      description: ''
-    }
+      name: "",
+      description: "",
+      members: [],
+    },
   });
 
-  const onSubmit = async (data: FormData) => {
+  const handleSubmit = async (data: ChannelFormData) => {
     try {
-      const response = await api.createChannel({
-        name: data.name,
-        type: data.type,
-        description: data.description || undefined
-      });
+      setIsLoading(true);
       
-      router.push(`/channels/${response.id}`);
-      setOpen(false);
+      // Get the auth token using the useAuth hook
+      const token = await getToken();
+      
+      if (!token) {
+        throw new Error('Authentication token not found');
+      }
+      
+      // Use HTTP POST to /api/channels endpoint with auth
+      const response = await fetch('/api/channels', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: data.name,
+          description: data.description || "",
+          type: activeTab.toUpperCase(),
+          members: data.members || [],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || 'Failed to create channel');
+      }
+
+      const newChannel = await response.json();
+      
+      toast({
+        title: "Success",
+        description: `Channel ${data.name} created successfully`,
+      });
+
+      onOpenChange(false);
+      form.reset();
+      router.push(`/channels/${newChannel.id}`);
+
     } catch (error) {
-      console.error('Failed to create channel:', error);
-      toast.error('Failed to create channel');
+      console.error('Error creating channel:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create channel. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  // Disable form submission for DM tab if no members selected
+  const isSubmitDisabled = () => {
+    if (activeTab === "dm" && (!form.getValues("members")?.length || form.getValues("members")?.length === 0)) {
+      return true;
+    }
+    return isLoading;
+  };
+
+  // Hide name/description fields for DM tab
+  const showNameDescription = activeTab !== "dm";
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-      <DialogContent>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[525px]">
         <DialogHeader>
-          <DialogTitle>Create a Channel</DialogTitle>
+          <DialogTitle>Create New Channel</DialogTitle>
         </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Channel Name</FormLabel>
-                  <FormControl>
-                    <Input {...field} placeholder="Enter channel name" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="public">Public</TabsTrigger>
+            <TabsTrigger value="private">Private</TabsTrigger>
+            <TabsTrigger value="dm">Direct Message</TabsTrigger>
+          </TabsList>
+
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 mt-4">
+              {showNameDescription && (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Channel Name</FormLabel>
+                        <FormControl>
+                          <Input 
+                            placeholder={activeTab === "public" ? "e.g. general" : "e.g. team-project"} 
+                            {...field} 
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="description"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Description (Optional)</FormLabel>
+                        <FormControl>
+                          <Textarea 
+                            placeholder="What's this channel about?"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
               )}
-            />
-            <FormField
-              control={form.control}
-              name="type"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Channel Type</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select channel type" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value={ChannelType.PUBLIC}>Public</SelectItem>
-                      <SelectItem value={ChannelType.PRIVATE}>Private</SelectItem>
-                      <SelectItem value={ChannelType.DM}>Direct Message</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
+
+              {(activeTab === "private" || activeTab === "dm") && (
+                <FormField
+                  control={form.control}
+                  name="members"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{activeTab === "dm" ? "Select Users" : "Add Members"}</FormLabel>
+                      <FormControl>
+                        <UserPicker 
+                          selectedUsers={field.value || []}
+                          onSelectionChange={(users) => field.onChange(users)}
+                          maxUsers={activeTab === "dm" ? 8 : undefined}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               )}
-            />
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description (Optional)</FormLabel>
-                  <FormControl>
-                    <Input {...field} placeholder="Enter channel description" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button type="submit">Create Channel</Button>
-          </form>
-        </Form>
+
+              <div className="flex justify-end space-x-2 mt-6">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onOpenChange(false)}
+                  disabled={isLoading}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit" 
+                  disabled={isSubmitDisabled()}
+                >
+                  {isLoading ? "Creating..." : "Create Channel"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );
-} 
+}; 

@@ -1,42 +1,48 @@
 'use client';
 
-import { createContext, useContext, useEffect } from 'react';
-import { useChannels } from '@/hooks/useChannels';
-import type { Channel } from '@/types/channel';
+import { createContext, useContext, useState, useCallback } from 'react';
+import { Channel } from '@/types/channel';
 
 interface ChannelContextType {
   channels: Channel[];
   isLoading: boolean;
-  joinChannel: (channelId: string) => Promise<any>;
-  leaveChannel: (channelId: string) => Promise<any>;
+  error: Error | null;
+  refreshChannels: () => Promise<void>;
 }
 
-const ChannelContext = createContext<ChannelContextType | null>(null);
+const ChannelContext = createContext<ChannelContextType>({
+  channels: [],
+  isLoading: false,
+  error: null,
+  refreshChannels: async () => {},
+});
 
-export const useChannelContext = () => {
-  const context = useContext(ChannelContext);
-  if (!context) {
-    throw new Error('useChannelContext must be used within a ChannelProvider');
-  }
-  return context;
-};
+export const ChannelProvider = ({ children }: { children: React.ReactNode }) => {
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
-export function ChannelProvider({ children }: { children: React.ReactNode }) {
-  const { channels, isLoading, joinChannel, leaveChannel } = useChannels();
-
-  // Debug log when channels update
-  useEffect(() => {
-    console.log('Channel context value updated:', { channels, isLoading });
-  }, [channels, isLoading]);
+  const refreshChannels = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch('/api/channels');
+      if (!response.ok) {
+        throw new Error('Failed to fetch channels');
+      }
+      const data = await response.json();
+      setChannels(data);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to fetch channels'));
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   return (
-    <ChannelContext.Provider value={{
-      channels,
-      isLoading,
-      joinChannel,
-      leaveChannel
-    }}>
+    <ChannelContext.Provider value={{ channels, isLoading, error, refreshChannels }}>
       {children}
     </ChannelContext.Provider>
   );
-} 
+};
+
+export const useChannelContext = () => useContext(ChannelContext); 

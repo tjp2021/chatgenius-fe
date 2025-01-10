@@ -31,6 +31,7 @@ export function ChannelSidebar() {
   const [isBrowseModalOpen, setIsBrowseModalOpen] = useState(false);
   const [channelToLeave, setChannelToLeave] = useState<Channel | null>(null);
   const { channels, isLoading: isLoadingChannels } = useChannelContext();
+  const [isOpen, setIsOpen] = useState(false);
   
   // Debug log when channels update
   useEffect(() => {
@@ -190,16 +191,19 @@ export function ChannelSidebar() {
         </div>
       )}
 
-      {/* Create Button */}
-      <div className="mt-auto pt-4 border-t border-emerald-800">
-        <button
-          onClick={() => setIsBrowseModalOpen(true)}
-          className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-emerald-100 hover:text-white hover:bg-emerald-800/50 rounded"
+      <div className="mt-auto p-4 flex justify-center">
+        <Button 
+          onClick={() => setIsOpen(true)}
+          className="w-full bg-emerald-700 hover:bg-emerald-600 text-white"
         >
-          <Hash className="h-4 w-4" />
-          <span>Browse Channels</span>
-        </button>
+          Create Channel
+        </Button>
       </div>
+
+      <CreateChannelDialog 
+        open={isOpen} 
+        onOpenChange={setIsOpen}
+      />
 
       <BrowseChannelsModal
         open={isBrowseModalOpen}

@@ -1095,3 +1095,78 @@ Learning Lessons [CG-20231219-001]
   4. Add automated tests for different response formats
 
 ==================================================================
+
+Problem Analysis [CG-20231218-001]
+
+- **ID**: CG-20231218-001
+- **Error Description**: Multiple issues with channel leave functionality:
+  1. Channel owners were seeing "Leave" button instead of "Delete"
+  2. 403 Forbidden error when owners tried to leave their channels
+  3. 404 Not Found error due to incorrect HTTP method (DELETE instead of POST)
+  4. UI not updating after leaving channels
+  5. Incorrect navigation to /welcome instead of staying on /channels
+- **Root Cause Hypotheses**:
+  1. Button logic didn't properly handle channel ownership
+  2. Backend requires owners to delete channels rather than leave them
+  3. API endpoint implementation used wrong HTTP method
+  4. Query cache not being invalidated after channel updates
+  5. Navigation logic assumed /welcome was needed when no next channel
+
+Solution Walkthrough [CG-20231218-001]
+
+- **ID**: CG-20231218-001
+- **Solution Description**: Multiple fixes were implemented:
+  1. Updated button logic to show "Delete" for owners
+  2. Changed API endpoint from DELETE to POST method
+  3. Added query cache invalidation
+  4. Fixed navigation to stay on /channels
+- **Why It Worked**: 
+  1. Button logic now correctly checks `channel.ownerId === user?.id`
+  2. API calls match backend expectations (POST to /leave)
+  3. `queryClient.invalidateQueries()` ensures UI updates
+  4. Removed conditional navigation to /welcome
+- **Key Changes**:
+  ```typescript
+  // Button logic fix
+  onClick={() => channel.ownerId === user?.id ? setChannelToDelete(channel) : handleLeaveChannel(channel)}
+  
+  // API method fix
+  const leaveChannel = useCallback(async (channelId: string, shouldDelete: boolean = false) => {
+    const response = await axiosInstance.post<ChannelLeaveResponse>(
+      `/channels/${channelId}/leave`,
+      null,
+      { params: { shouldDelete } }
+    );
+    return response.data;
+  }, [axiosInstance]);
+
+  // Cache invalidation
+  await queryClient.invalidateQueries({ queryKey: ['channels'] });
+  
+  // Navigation fix
+  router.push('/channels');
+  ```
+
+Learning Lessons [CG-20231218-001]
+
+- **ID**: CG-20231218-001
+- **Pattern Recognition**: 
+  1. UI state management requires both immediate feedback and cache invalidation
+  2. API endpoint design should follow RESTful conventions but also practical requirements
+  3. Role-based UI elements need explicit ownership checks
+- **Prevention Strategies**:
+  1. Always check API documentation for correct HTTP methods
+  2. Implement role-based UI checks early in development
+  3. Use query cache invalidation for real-time UI updates
+- **Best Practices Learned**:
+  1. Use POST for actions (like leave/delete) even if semantically DELETE
+  2. Always invalidate relevant query cache after mutations
+  3. Keep users on the most relevant page after actions
+  4. Show different UI elements based on user roles/ownership
+- **Future Recommendations**:
+  1. Add API endpoint documentation to component files
+  2. Create reusable hooks for common cache invalidation patterns
+  3. Implement role-based UI component wrappers
+  4. Add type safety for API response handling
+
+==================================================================
