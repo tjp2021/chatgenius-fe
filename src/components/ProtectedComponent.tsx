@@ -1,3 +1,5 @@
+'use client';
+
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
 import { useState } from 'react';
