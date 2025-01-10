@@ -1,14 +1,14 @@
-'use client';
+// 'use client';
 
-import { useContext } from 'react';
-import { SocketContext } from '@/providers/socket-provider';
+// import { useContext } from 'react';
+// import { SocketContext } from '@/providers/socket-provider';
 
-export const useSocket = () => {
-  const context = useContext(SocketContext);
+// export const useSocket = () => {
+//   const context = useContext(SocketContext);
   
-  if (!context) {
-    throw new Error('useSocket must be used within a SocketProvider');
-  }
+//   if (!context) {
+//     throw new Error('useSocket must be used within a SocketProvider');
+//   }
   
-  return context.socket;
-}; 
+//   return context.socket;
+// }; 

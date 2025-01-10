@@ -26,6 +26,8 @@ export function MessageItem({ message, onRetry }: MessageItemProps) {
   const { userId } = useAuth();
   const isOwn = message.userId === userId;
 
+  if (!message) return null;
+
   return (
     <div className={cn(
       "flex gap-3 items-start",
@@ -33,7 +35,9 @@ export function MessageItem({ message, onRetry }: MessageItemProps) {
     )}>
       <Avatar className="h-8 w-8">
         <AvatarImage src={`https://avatar.vercel.sh/${message.userId}`} />
-        <AvatarFallback>U</AvatarFallback>
+        <AvatarFallback>
+          {message.userId.slice(0, 2).toUpperCase()}
+        </AvatarFallback>
       </Avatar>
 
       <div className={cn(
@@ -54,14 +58,14 @@ export function MessageItem({ message, onRetry }: MessageItemProps) {
           </div>
         )}
 
-        {message.isFailed && onRetry && (
+        {message.isFailed && onRetry && message.tempId && (
           <div className="flex items-center gap-2 mt-1">
             <AlertCircle className="h-4 w-4 text-destructive" />
             <span className="text-xs text-destructive">Failed to send</span>
             <Button 
               variant="ghost" 
               size="sm" 
-              onClick={() => message.tempId && onRetry(message.tempId)}
+              onClick={() => onRetry(message.tempId!)}
               className="h-6 px-2 text-xs"
             >
               Retry
