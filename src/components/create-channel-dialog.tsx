@@ -6,7 +6,7 @@ import { UserPicker } from "./user-picker";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -35,71 +35,94 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
-  const { getToken } = useAuth();
+  const { getToken, userId } = useAuth();
   const { refreshChannels } = useChannelContext();
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+  const [debugMembers, setDebugMembers] = useState<string[]>([]);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>(() => 
+    userId ? [userId] : []
+  );
   
+  useEffect(() => {
+    if (userId && !selectedMemberIds.includes(userId)) {
+      setSelectedMemberIds(prev => [userId, ...prev]);
+    }
+  }, [userId]);
+
   const form = useForm<ChannelFormData>({
     resolver: zodResolver(channelSchema),
     defaultValues: {
       name: "",
       description: "",
-      members: [],
+      members: userId ? [userId] : [],
     },
   });
 
   const handleSubmit = async (data: ChannelFormData) => {
     try {
       setIsLoading(true);
-      
-      // Get the auth token using the useAuth hook
       const token = await getToken();
-      
-      if (!token) {
-        throw new Error('Authentication token not found');
-      }
-      
-      console.log('Submitting with members:', data.members); // Debug log
 
-      // Use HTTP POST to /api/channels endpoint with auth
+      // For private channels, ensure we have at least one other member
+      if (activeTab === 'private' && selectedMemberIds.length === 0) {
+        toast({
+          title: 'Error',
+          description: 'Please add at least one member to the private channel',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const requestBody = {
+        name: data.name,
+        description: data.description || "",
+        type: activeTab.toUpperCase(),
+        ownerId: userId, // Explicitly send who's creating the channel
+        ...(activeTab === 'private' && {
+          memberIds: selectedMemberIds // Send selected members
+        })
+      };
+
+      console.log('Creating channel with:', {
+        owner: userId,
+        members: selectedMemberIds,
+        type: activeTab
+      });
+
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          name: data.name,
-          description: data.description || "",
-          type: activeTab.toUpperCase(),
-          members: data.members || [],
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.message || 'Failed to create channel');
+        const errorData = await response.json();
+        console.error('Failed to create channel:', {
+          error: errorData,
+          sentData: requestBody
+        });
+        throw new Error('Failed to create channel');
       }
 
-      const newChannel = await response.json();
-      
-      await refreshChannels();
-      
-      toast({
-        title: "Success",
-        description: `Channel ${data.name} created successfully`,
+      const channel = await response.json();
+      console.log('Channel created:', {
+        channelData: channel,
+        requestSent: requestBody
       });
 
       onOpenChange(false);
       form.reset();
-      router.push(`/channels/${newChannel.id}`);
+      refreshChannels();
 
     } catch (error) {
-      console.error('Error creating channel:', error);
+      console.error('Channel creation error:', error);
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to create channel. Please try again.",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Failed to create channel',
+        variant: 'destructive',
       });
     } finally {
       setIsLoading(false);
@@ -118,17 +141,19 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
   const showNameDescription = activeTab !== "dm";
 
   const handleAddMember = (userId: string) => {
-    const currentMembers = form.getValues("members") || [];
+    console.log('Adding/removing member:', userId);
     
-    // If user is already selected, remove them
-    if (currentMembers.includes(userId)) {
-      form.setValue("members", currentMembers.filter(id => id !== userId));
-    } else {
-      // Otherwise add them
-      form.setValue("members", [...currentMembers, userId]);
-    }
-    
-    console.log('Current members after update:', form.getValues("members"));
+    setSelectedMemberIds(prev => {
+      const newMembers = prev.includes(userId)
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId];
+        
+      console.log('Updated members:', newMembers);
+      
+      // Update form state as well
+      form.setValue("members", newMembers);
+      return newMembers;
+    });
   };
 
   return (
@@ -195,7 +220,7 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
                       <FormControl>
                         <UserSearch 
                           onSelect={handleAddMember}
-                          selectedUsers={field.value || []}
+                          selectedUsers={selectedMemberIds}
                           placeholder={activeTab === "dm" ? "Search users to message..." : "Search users to add..."}
                         />
                       </FormControl>

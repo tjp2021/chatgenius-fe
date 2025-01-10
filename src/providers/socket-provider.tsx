@@ -19,8 +19,7 @@ export const useSocket = () => {
 };
 
 export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
-  const [socket, setSocket] = useState<any>(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const [socket, setSocket] = useState<Socket | null>(null);
   const { getToken } = useAuth();
 
   useEffect(() => {
@@ -29,39 +28,22 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         const token = await getToken();
         console.log('Initializing socket connection...');
 
-        const socketInstance = ClientIO('http://localhost:3000', {
-          path: '/api/socket/io',
-          addTrailingSlash: false,
+        const socketInstance = ClientIO(process.env.NEXT_PUBLIC_API_URL!, {
           auth: {
             token
-          },
-          transports: ['polling', 'websocket']
+          }
         });
 
         socketInstance.on('connect', () => {
-          console.log('Socket connected!');
-          setIsConnected(true);
+          console.log('Socket connected!', socketInstance.id);
         });
 
         socketInstance.on('disconnect', () => {
-          console.log('Socket disconnected!');
-          setIsConnected(false);
-        });
-
-        socketInstance.on('error', (error: any) => {
-          console.error('Socket error:', error);
-        });
-
-        socketInstance.on('connect_error', (error) => {
-          console.error('Socket connection error details:', error);
+          console.log('Socket disconnected');
         });
 
         setSocket(socketInstance);
 
-        return () => {
-          console.log('Cleaning up socket connection...');
-          socketInstance.disconnect();
-        };
       } catch (error) {
         console.error('Socket initialization error:', error);
       }
@@ -71,7 +53,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
   }, [getToken]);
 
   return (
-    <SocketContext.Provider value={{ socket, isConnected }}>
+    <SocketContext.Provider value={{ socket }}>
       {children}
     </SocketContext.Provider>
   );

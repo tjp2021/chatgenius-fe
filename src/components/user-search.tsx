@@ -14,43 +14,28 @@ import { Button } from '@/components/ui/button';
 
 interface UserSearchProps {
   onSelect: (userId: string) => void;
-  selectedUsers?: string[];
+  selectedUsers: string[];
   placeholder?: string;
 }
 
-export function UserSearch({ onSelect, selectedUsers = [], placeholder = 'Search users...' }: UserSearchProps) {
+export function UserSearch({ onSelect, selectedUsers, placeholder = 'Search users...' }: UserSearchProps) {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
-  const { toast } = useToast();
   const { getToken } = useAuth();
 
-  console.log('Current search:', search);
-  console.log('Debounced search:', debouncedSearch);
-
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['users', debouncedSearch],
     queryFn: async () => {
       const token = await getToken();
       return apiClient.searchUsers(debouncedSearch, token);
     },
-    enabled: debouncedSearch.length > 0,
-    retry: false
+    enabled: debouncedSearch.length > 0
   });
 
-  useEffect(() => {
-    if (error) {
-      console.error('Search error:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to search users',
-        variant: 'destructive'
-      });
-    }
-  }, [error, toast]);
-
-  const handleSelect = useCallback((userId: string) => {
+  const handleSelect = (userId: string) => {
+    console.log('Clicked user:', userId);
     onSelect(userId);
-  }, [onSelect]);
+  };
 
   return (
     <div className="w-full space-y-4">
@@ -66,27 +51,18 @@ export function UserSearch({ onSelect, selectedUsers = [], placeholder = 'Search
         </div>
       )}
 
-      {data?.users.length === 0 && (
-        <p className="text-center text-sm text-muted-foreground">
-          No users found
-        </p>
-      )}
-
       <div className="space-y-2">
         {data?.users.map((user) => {
           const isSelected = selectedUsers.includes(user.id);
           
           return (
-            <div
-              key={user.id}
-              className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50"
-            >
-              <div className="flex-1 flex items-center gap-3">
+            <div key={user.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50">
+              <div className="flex items-center gap-3">
                 <Avatar>
-                  <AvatarImage src={user.imageUrl || undefined} alt={user.name || 'User'} />
+                  <AvatarImage src={user.imageUrl} alt={user.name || 'User'} />
                   <AvatarFallback>{user.name?.[0] || 'U'}</AvatarFallback>
                 </Avatar>
-                <div className="flex-1">
+                <div>
                   <p className="font-medium">{user.name}</p>
                   <div className="flex items-center gap-2">
                     <div className={cn(
@@ -104,7 +80,7 @@ export function UserSearch({ onSelect, selectedUsers = [], placeholder = 'Search
                 type="button"
                 variant={isSelected ? "destructive" : "secondary"}
                 onClick={() => handleSelect(user.id)}
-                className="w-24"
+                className="w-24 cursor-pointer"
               >
                 {isSelected ? "Remove" : "Add"}
               </Button>
