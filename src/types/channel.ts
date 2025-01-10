@@ -1,69 +1,40 @@
-import { User } from '@clerk/nextjs/server';
+import type { User } from '@/types/user';
 
-export enum ChannelType {
-  PUBLIC = 'PUBLIC',
-  PRIVATE = 'PRIVATE',
-  DM = 'DM'
-}
+export type ChannelType = 'PUBLIC' | 'PRIVATE' | 'DM';
 
 export interface Channel {
   id: string;
   name: string;
-  description: string | null;
   type: ChannelType;
+  description?: string;
+  ownerId: string;
   createdAt: string;
   updatedAt: string;
-  _count: {
+  _count?: {
     members: number;
     messages: number;
     lastViewedMessageCount?: number;
   };
-  isMember: boolean;
-  joinedAt: string | null;
-  isOwner?: boolean;
   members?: ChannelMember[];
 }
 
+export interface CreateChannelDto {
+  name: string;
+  type: ChannelType;
+  description?: string;
+}
+
 export interface ChannelMember {
-  userId: string;
+  id: string;
   channelId: string;
+  userId: string;
   role: 'OWNER' | 'ADMIN' | 'MEMBER';
+  user: User;
   joinedAt: string;
-  user?: {
-    id: string;
-    name: string | null;
-    imageUrl: string | null;
-  };
 }
 
-export interface ChannelGroups {
-  public: Channel[];
-  private: Channel[];
-  dms: Channel[];
-}
-
-export interface OnlineUsers {
-  [userId: string]: boolean;
-}
-
-export interface ChannelActionsDropdownProps {
-  isMember: boolean;
-  onJoin: () => void;
-  onLeave: () => void;
-}
-
-export interface NavigationState {
-  channels: Channel[];
-}
-
-export interface NavigationResponse {
-  navigationState: NavigationState;
-}
-
-export interface TransitionResult {
+export interface ChannelMutationResponse {
   success: boolean;
-}
-
-export interface TransitionResponse {
-  transitionResult: TransitionResult;
+  channel?: Channel;
+  error?: string;
 } 

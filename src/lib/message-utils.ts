@@ -1,74 +1,143 @@
-import { MessagePayload, MessageDeliveryStatus } from '@/types/message';
+'use client';
+
+import { Message } from '@/types';
 import { Socket } from 'socket.io-client';
 
-export function validateMessage(message: MessagePayload): string[] {
-  const required = ['content', 'channelId'];
-  const missing = required.filter(field => !message[field as keyof MessagePayload]);
-  return missing;
+// Types
+interface MessageQueue {
+  [key: string]: Message[];
 }
 
-export async function sendWithRetry(
-  socket: typeof Socket,
-  message: MessagePayload,
-  attempts = 0
-): Promise<void> {
-  const missing = validateMessage(message);
-  if (missing.length) {
-    throw new Error(`Missing required fields: ${missing.join(', ')}`);
-  }
+interface MessageState {
+  messages: Message[];
+  pendingMessages: MessageQueue;
+}
 
-  return new Promise((resolve, reject) => {
-    try {
-      socket.emit('message:send', message);
+interface SendMessageOptions {
+  content: string;
+  channelId: string;
+  id: string;
+}
 
-      // Wait for acknowledgment
-      const timeoutId = setTimeout(() => {
-        if (attempts < 3) {
-          console.log(`Retrying message send attempt ${attempts + 1}`);
-          // Exponential backoff
-          setTimeout(() => {
-            sendWithRetry(socket, message, attempts + 1)
-              .then(resolve)
-              .catch(reject);
-          }, Math.pow(2, attempts) * 1000);
-        } else {
-          reject(new Error('Message send failed after 3 attempts'));
-        }
-      }, 5000); // 5 second timeout
+// Message State Management
+export const createMessageState = (): MessageState => ({
+  messages: [],
+  pendingMessages: {}
+});
 
-      // Listen for sent confirmation
-      const handleSent = (response: { messageId: string; status: MessageDeliveryStatus }) => {
-        clearTimeout(timeoutId);
-        socket.off('message:sent', handleSent);
-        resolve();
-      };
-
-      socket.on('message:sent', handleSent);
-    } catch (error) {
-      reject(error);
+export const queueMessage = (
+  state: MessageState,
+  channelId: string,
+  message: Message
+): MessageState => {
+  const queue = state.pendingMessages[channelId] || [];
+  return {
+    ...state,
+    pendingMessages: {
+      ...state.pendingMessages,
+      [channelId]: [...queue, message]
     }
-  });
-}
+  };
+};
 
-// Store failed messages for retry
-export function handleMessageError(message: MessagePayload): void {
-  const offlineMessages = JSON.parse(
-    localStorage.getItem('offlineMessages') || '[]'
-  );
-  offlineMessages.push({
-    ...message,
-    status: MessageDeliveryStatus.FAILED
-  });
-  localStorage.setItem('offlineMessages', JSON.stringify(offlineMessages));
-}
+export const handleMessageDelivery = (
+  state: MessageState,
+  channelId: string,
+  messageId: string
+): MessageState => {
+  const queue = state.pendingMessages[channelId] || [];
+  const updatedQueue = queue.filter(msg => msg.id !== messageId);
 
-// Retry failed messages
-export function retryFailedMessages(socket: typeof Socket): void {
-  const offlineMessages = JSON.parse(
-    localStorage.getItem('offlineMessages') || '[]'
+  return {
+    ...state,
+    pendingMessages: {
+      ...state.pendingMessages,
+      [channelId]: updatedQueue
+    }
+  };
+};
+
+export const handleMessageFailure = (
+  state: MessageState,
+  channelId: string,
+  messageId: string
+): MessageState => {
+  const queue = state.pendingMessages[channelId] || [];
+  const updatedQueue = queue.map(msg =>
+    msg.id === messageId ? { ...msg, isFailed: true } : msg
   );
-  offlineMessages.forEach((message: MessagePayload) => {
-    sendWithRetry(socket, message, 0).catch(console.error);
+
+  return {
+    ...state,
+    pendingMessages: {
+      ...state.pendingMessages,
+      [channelId]: updatedQueue
+    }
+  };
+};
+
+// Message Sending
+export const sendMessage = async (
+  socket: Socket,
+  options: SendMessageOptions,
+  maxAttempts = 3
+): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    if (!socket?.connected) {
+      reject(new Error('Socket not connected'));
+      return;
+    }
+
+    const attempt = async (attemptNumber: number) => {
+      try {
+        socket.emit('message:send', options);
+
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error('Message send timeout'));
+          }, 5000);
+        });
+
+        const messagePromise = new Promise<void>((resolve) => {
+          const handleSent = () => {
+            socket.off('message:sent', handleSent);
+            resolve();
+          };
+          socket.on('message:sent', handleSent);
+        });
+
+        await Promise.race([messagePromise, timeoutPromise]);
+        resolve();
+      } catch (error) {
+        if (attemptNumber < maxAttempts) {
+          // Exponential backoff
+          const delay = Math.pow(2, attemptNumber) * 1000;
+          setTimeout(() => attempt(attemptNumber + 1), delay);
+        } else {
+          reject(new Error(`Failed after ${maxAttempts} attempts`));
+        }
+      }
+    };
+
+    attempt(0);
   });
-  localStorage.removeItem('offlineMessages');
-} 
+};
+
+export const getPendingMessages = (
+  state: MessageState,
+  channelId: string
+): Message[] => {
+  return state.pendingMessages[channelId] || [];
+};
+
+export const clearPendingMessages = (
+  state: MessageState,
+  channelId: string
+): MessageState => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { [channelId]: removed, ...rest } = state.pendingMessages;
+  return {
+    ...state,
+    pendingMessages: rest
+  };
+}; 

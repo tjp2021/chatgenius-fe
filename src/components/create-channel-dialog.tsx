@@ -1,138 +1,76 @@
 'use client';
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { ChannelType } from '@/types/channel';
-import { Button } from '@/components/ui/button';
-import { useSocket } from '@/providers/socket-provider';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
+import { z } from 'zod';
+import { useApi } from '@/hooks/useApi';
+import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { useToast } from '@/components/ui/use-toast';
-import { api } from '@/lib/axios';
-import { cn } from '@/lib/utils';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useState } from 'react';
+
+const ChannelType = {
+  PUBLIC: 'PUBLIC',
+  PRIVATE: 'PRIVATE',
+  DM: 'DM'
+} as const;
 
 const formSchema = z.object({
-  name: z.string()
-    .min(1, 'Channel name is required')
-    .max(50)
-    .regex(/^[a-z0-9-_]+$/, 'Only lowercase letters, numbers, hyphens, and underscores allowed'),
-  description: z.string().max(200).optional(),
+  name: z.string().min(1, 'Channel name is required'),
   type: z.enum(['PUBLIC', 'PRIVATE', 'DM']),
+  description: z.string().optional()
 });
 
 type FormData = z.infer<typeof formSchema>;
 
 interface CreateChannelDialogProps {
-  onChannelCreated?: () => void;
-  className?: string;
+  defaultType?: keyof typeof ChannelType;
+  trigger?: React.ReactNode;
 }
 
 export function CreateChannelDialog({ 
-  onChannelCreated,
-  className 
+  defaultType = 'PUBLIC',
+  trigger
 }: CreateChannelDialogProps) {
-  const [open, setOpen] = useState(false);
-  const { toast } = useToast();
   const router = useRouter();
-  const { socket } = useSocket();
-  const queryClient = useQueryClient();
-  
+  const api = useApi();
+  const [open, setOpen] = useState(false);
+
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: '',
-      description: '',
-      type: 'PUBLIC',
-    },
-  });
-
-  const createChannelMutation = useMutation({
-    mutationFn: async (data: FormData) => {
-      const response = await api.post('/channels/create', data);
-      return response.data;
-    },
-    onSuccess: (newChannel, data) => {
-      // Emit socket event for real-time update
-      if (socket) {
-        socket.emit('channel:created', {
-          channel: newChannel,
-          type: data.type
-        });
-      }
-
-      // Invalidate and refetch channels
-      queryClient.invalidateQueries({ queryKey: ['channels', 'browse'] });
-
-      toast({
-        title: 'Channel created',
-        description: `Successfully created #${data.name}`,
-      });
-      
-      setOpen(false);
-      form.reset();
-      onChannelCreated?.();
-      router.push(`/channels/${newChannel.id}`);
-    },
-    onError: (error: any) => {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to create channel. Please try again.',
-        variant: 'destructive',
-      });
+      type: ChannelType[defaultType],
+      description: ''
     }
   });
 
-  const onSubmit = (data: FormData) => {
-    createChannelMutation.mutate(data);
+  const onSubmit = async (data: FormData) => {
+    try {
+      const response = await api.createChannel({
+        name: data.name,
+        type: data.type,
+        description: data.description || undefined
+      });
+      
+      router.push(`/channels/${response.id}`);
+      setOpen(false);
+    } catch (error) {
+      console.error('Failed to create channel:', error);
+      toast.error('Failed to create channel');
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button 
-          variant="outline" 
-          className={cn(
-            "bg-emerald-900 text-white hover:text-white hover:bg-emerald-800/50",
-            className
-          )}
-        >
-          Create Channel
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
+      <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create Channel</DialogTitle>
-          <DialogDescription>
-            Create a new channel for your team to collaborate in.
-          </DialogDescription>
+          <DialogTitle>Create a Channel</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -141,29 +79,10 @@ export function CreateChannelDialog({
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Name</FormLabel>
+                  <FormLabel>Channel Name</FormLabel>
                   <FormControl>
-                    <Input placeholder="general" {...field} />
+                    <Input {...field} placeholder="Enter channel name" />
                   </FormControl>
-                  <FormDescription>
-                    Channel name can only contain lowercase letters, numbers, hyphens, and underscores.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description</FormLabel>
-                  <FormControl>
-                    <Input placeholder="What's this channel about?" {...field} />
-                  </FormControl>
-                  <FormDescription>
-                    A brief description of the channel's purpose.
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -173,33 +92,40 @@ export function CreateChannelDialog({
               name="type"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Type</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormLabel>Channel Type</FormLabel>
+                  <Select
+                    onValueChange={field.onChange}
+                    defaultValue={field.value}
+                  >
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select channel type" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="PUBLIC">Public</SelectItem>
-                      <SelectItem value="PRIVATE">Private</SelectItem>
+                      <SelectItem value={ChannelType.PUBLIC}>Public</SelectItem>
+                      <SelectItem value={ChannelType.PRIVATE}>Private</SelectItem>
+                      <SelectItem value={ChannelType.DM}>Direct Message</SelectItem>
                     </SelectContent>
                   </Select>
-                  <FormDescription>
-                    Choose who can access this channel.
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <DialogFooter>
-              <Button 
-                type="submit" 
-                disabled={createChannelMutation.isPending || form.formState.isSubmitting}
-              >
-                {createChannelMutation.isPending ? 'Creating...' : 'Create Channel'}
-              </Button>
-            </DialogFooter>
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description (Optional)</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Enter channel description" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <Button type="submit">Create Channel</Button>
           </form>
         </Form>
       </DialogContent>

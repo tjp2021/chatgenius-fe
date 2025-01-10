@@ -1,23 +1,21 @@
+import type { User } from '@/types/user';
+
+export type MessageDeliveryStatus = 'SENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
+
 export interface Message {
-  id?: string;
-  tempId?: string;
+  id: string;
   content: string;
-  userId: string;
   channelId: string;
-  createdAt: string;
-  isPending?: boolean;
-  isFailed?: boolean;
+  userId: string;
+  createdAt: Date;
+  updatedAt: Date;
+  deliveryStatus: MessageDeliveryStatus;
+  user: User;
+  parentId?: string;
 }
 
-export enum MessageEvent {
-  SEND = 'message:send',
-  NEW = 'message:new',
-  DELIVERED = 'message:delivered',
-  FAILED = 'message:failed'
-}
-
-export enum MessageDeliveryStatus {
-  PENDING = 'pending',
-  DELIVERED = 'delivered',
-  FAILED = 'failed'
+export interface MessageResponse {
+  success: boolean;
+  data?: Message;
+  error?: string;
 } 

@@ -1,0 +1,6 @@
+export const FEATURES = {
+  USE_REAL_SOCKET: process.env.NEXT_PUBLIC_USE_REAL_SOCKET === 'true',
+  USE_REAL_API: process.env.NEXT_PUBLIC_USE_REAL_API === 'true',
+  ENABLE_FILE_UPLOAD: process.env.NEXT_PUBLIC_ENABLE_FILE_UPLOAD === 'true',
+  ENABLE_REAL_TIME_FEATURES: process.env.NEXT_PUBLIC_ENABLE_REAL_TIME === 'true'
+}; 

@@ -875,3 +875,223 @@ Learning Lessons [CG-20240109-001]
   4. Add automated tests for state transitions
 
 ==================================================================
+
+Problem Analysis [CG-20240110-001]
+
+- **ID**: CG-20240110-001
+- **Error Description**: Socket connection failures and HTTP 401 errors due to inconsistent token handling:
+  1. Socket disconnecting immediately after connection with "io server disconnect"
+  2. HTTP requests failing with 401 Unauthorized
+  3. Clerk token format inconsistencies across different parts of the application
+  4. Multiple token handling approaches causing confusion
+
+- **Root Cause Hypotheses**: 
+  1. Token Format Inconsistencies:
+     - Using `template: 'default'` unnecessarily
+     - Inconsistent Bearer prefix handling
+     - Different token formats for HTTP vs WebSocket
+  2. Documentation Oversight:
+     - Not following integration doc specifications
+     - Missing clear token handling guidelines
+  3. Implementation Issues:
+     - Multiple places handling tokens differently
+     - Mixing token formats between services
+
+- **Steps to Reproduce**: 
+  1. Initialize application with socket connection
+  2. Observe immediate socket disconnect
+  3. Check network tab for 401 errors
+  4. Review token formats in requests
+
+- **Logs or Relevant Information**:
+  ```typescript
+  // Socket disconnection
+  Socket disconnected: io server disconnect
+
+  // HTTP 401
+  GET http://localhost:3001/channels 401 (Unauthorized)
+
+  // Token format issues
+  config.headers.Authorization = `Bearer ${token.replace('Bearer ', '')}` // Wrong
+  auth: { token: `Bearer ${token}` }  // Wrong for WebSocket
+  ```
+
+Solution Walkthrough [CG-20240110-001]
+
+- **ID**: CG-20240110-001
+- **Solution Description**: Implemented consistent token handling following integration doc:
+  1. Removed all `template: 'default'` usage
+  2. Standardized token handling for HTTP and WebSocket
+  3. Fixed token format in all providers
+
+- **Why It Worked**: 
+  1. HTTP Token Handling:
+     ```typescript
+     // Correct HTTP token format
+     const token = await getToken();
+     config.headers.Authorization = `Bearer ${token}`;
+     ```
+  
+  2. WebSocket Token Handling:
+     ```typescript
+     // Correct WebSocket token format
+     const token = await getToken();
+     const socketInstance = manager.socket('/', {
+       auth: {
+         token,  // Raw token, no Bearer prefix
+         userId
+       }
+     });
+     ```
+  
+  3. Auth Provider:
+     ```typescript
+     // Consistent token handling
+     const token = await getToken();
+     setAuthToken(() => Promise.resolve(token));
+     ```
+
+- **Key Lessons**:
+  1. Always follow integration docs precisely
+  2. Keep token handling consistent across services
+  3. Different services need different token formats
+  4. Document token format requirements clearly
+
+Learning Lessons [CG-20240110-001]
+
+- **ID**: CG-20240110-001
+- **Pattern Recognition**:
+  1. Authentication Patterns:
+     - HTTP requires Bearer prefix
+     - WebSocket needs raw token
+     - Token handling should be centralized
+  2. Integration Patterns:
+     - Follow docs exactly
+     - Don't add unnecessary complexity
+     - Keep consistent patterns
+
+- **Prevention Strategies**:
+  1. Documentation:
+     - Create token handling guide
+     - Document each service's requirements
+     - Add code examples for each case
+  2. Implementation:
+     - Centralize token handling
+     - Use TypeScript for token formats
+     - Add validation for token formats
+  3. Testing:
+     - Add token format tests
+     - Validate auth flows
+     - Test both HTTP and WebSocket
+
+- **Best Practices Learned**:
+  1. Token Handling:
+     ```typescript
+     // HTTP: Always add Bearer prefix
+     const httpToken = `Bearer ${token}`;
+     
+     // WebSocket: Never add Bearer prefix
+     const wsToken = token;
+     ```
+  2. Configuration:
+     ```typescript
+     // Centralized token handling
+     const getAuthToken = async (type: 'http' | 'websocket') => {
+       const token = await getToken();
+       return type === 'http' ? `Bearer ${token}` : token;
+     };
+     ```
+  3. Validation:
+     ```typescript
+     // Token format validation
+     const validateToken = (token: string, type: 'http' | 'websocket') => {
+       if (type === 'http' && !token.startsWith('Bearer ')) {
+         throw new Error('HTTP token must have Bearer prefix');
+       }
+       if (type === 'websocket' && token.startsWith('Bearer ')) {
+         throw new Error('WebSocket token must not have Bearer prefix');
+       }
+     };
+     ```
+
+- **Future Recommendations**:
+  1. Create a token service:
+     - Handle all token operations
+     - Validate formats
+     - Provide typed methods
+  2. Add monitoring:
+     - Track auth failures
+     - Alert on token issues
+     - Monitor connection stability
+  3. Improve documentation:
+     - Add clear examples
+     - Document gotchas
+     - Keep updated with changes
+
+==================================================================
+
+Problem Analysis [CG-20231219-001]
+
+- **ID**: CG-20231219-001
+- **Error Description**: Channels were visible in the API response but not rendering in the sidebar, despite the data being present in the raw API response.
+- **Root Cause Hypotheses**: 
+  1. The API response format was array-like (with numeric keys and length) but not a proper JavaScript array
+  2. Our data processing code wasn't handling this format correctly, resulting in empty channel data
+  3. Type definitions were causing issues with proper data handling
+
+Solution Walkthrough [CG-20231219-001]
+
+- **ID**: CG-20231219-001
+- **Solution Description**: Modified the channel data processing to handle multiple response formats and fixed type definitions
+- **Why It Worked**: 
+  1. Added support for array-like objects using `Array.from()`
+  2. Properly typed the response handling
+  3. Fixed type conflicts in the component hierarchy
+- **Key Changes**:
+  ```typescript
+  // Before
+  if (Array.isArray(response.data)) {
+    channelData = response.data;
+  } else if (response.data && typeof response.data === 'object') {
+    channelData = (response.data as any).data || [];
+  }
+
+  // After
+  if (Array.isArray(response)) {
+    channelData = response;
+  } else if (Array.isArray(response.data)) {
+    channelData = response.data;
+  } else if (response && typeof response === 'object' && 'length' in response) {
+    const length = Number((response as any).length);
+    if (!isNaN(length)) {
+      channelData = Array.from({ length }, (_, i) => (response as any)[i] as Channel);
+    }
+  }
+  ```
+
+Learning Lessons [CG-20231219-001]
+
+- **ID**: CG-20231219-001
+- **Pattern Recognition**: 
+  1. API responses may come in different formats (array, array-like object, nested data)
+  2. Type safety needs to be balanced with runtime format handling
+  3. Console logging at each transformation step helps identify data flow issues
+
+- **Prevention Strategies**:
+  1. Always validate and log API response formats during initial integration
+  2. Implement robust type checking and data transformation
+  3. Add comprehensive debug logging throughout the data flow
+
+- **Best Practices Learned**:
+  1. Handle multiple response formats gracefully
+  2. Use TypeScript type guards to ensure type safety
+  3. Implement proper data transformation between API and frontend
+  4. Add debug logging at critical points in the data flow
+
+- **Future Recommendations**:
+  1. Create a standardized API response wrapper
+  2. Add runtime type validation for API responses
+  3. Implement API response interceptors to normalize data formats
+  4. Add automated tests for different response formats
+
+==================================================================

@@ -5,6 +5,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from '@/components/ui/toaster';
 import { SocketProvider } from './socket-provider';
+import { ChannelProvider } from '@/contexts/channel-context';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,8 +25,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
         enableSystem={false}
       >
         <SocketProvider>
-          {children}
-          <Toaster />
+          <ChannelProvider>
+            {children}
+            <Toaster />
+          </ChannelProvider>
         </SocketProvider>
       </ThemeProvider>
       <ReactQueryDevtools initialIsOpen={false} />

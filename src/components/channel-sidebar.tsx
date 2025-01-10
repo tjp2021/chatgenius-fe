@@ -5,17 +5,24 @@ import { useRouter } from 'next/navigation';
 import { Channel, ChannelType } from '@/types/channel';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
-import { ChevronDown, ChevronRight, Hash, Lock, MessageSquare } from 'lucide-react';
+import { ChevronDown, ChevronRight, Hash, Lock, MessageSquare, Plus } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { BrowseChannelsModal } from '@/components/browse-channels-modal';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useChannelContext } from '@/contexts/channel-context';
+import { CreateChannelDialog } from '@/components/create-channel-dialog';
 
 interface ChannelGroups {
   public: Channel[];
   private: Channel[];
   dms: Channel[];
+}
+
+interface ChannelCount {
+  members: number;
+  messages: number;
+  lastViewedMessageCount?: number;
 }
 
 export function ChannelSidebar() {
@@ -25,6 +32,12 @@ export function ChannelSidebar() {
   const [channelToLeave, setChannelToLeave] = useState<Channel | null>(null);
   const { channels, isLoading: isLoadingChannels } = useChannelContext();
   
+  // Debug log when channels update
+  useEffect(() => {
+    console.log('Channel sidebar received channels:', channels);
+    console.log('Channel loading state:', isLoadingChannels);
+  }, [channels, isLoadingChannels]);
+
   const [expandedSections, setExpandedSections] = useState({
     public: true,
     private: true,
@@ -33,6 +46,7 @@ export function ChannelSidebar() {
 
   // Group channels by type
   const groupedChannels = channels.reduce((acc: ChannelGroups, channel) => {
+    console.log('Processing channel:', channel); // Debug individual channel processing
     switch (channel.type) {
       case 'PUBLIC':
         acc.public.push(channel);
@@ -46,6 +60,11 @@ export function ChannelSidebar() {
     }
     return acc;
   }, { public: [], private: [], dms: [] });
+
+  // Debug log grouped channels
+  useEffect(() => {
+    console.log('Grouped channels:', groupedChannels);
+  }, [groupedChannels]);
 
   const handleChannelSelect = (channelId: string) => {
     router.push(`/channels/${channelId}`);
@@ -63,7 +82,7 @@ export function ChannelSidebar() {
   }
 
   return (
-    <div className="h-full bg-emerald-900 text-white p-4">
+    <div className="h-full flex flex-col bg-emerald-900 text-white p-4">
       <div className="mb-6">
         <h2 className="font-semibold mb-2">Channels</h2>
         <button
@@ -78,26 +97,39 @@ export function ChannelSidebar() {
       {isLoadingChannels ? (
         <LoadingSpinner />
       ) : (
-        <div className="space-y-6">
+        <div className="flex-1 space-y-6">
           {/* Public Channels */}
           <div>
-            <button
-              onClick={() => toggleSection('public')}
-              className="flex items-center gap-2 text-sm font-medium mb-2 text-emerald-100 hover:text-white w-full"
-            >
-              {expandedSections.public ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-              <Hash className="h-4 w-4" />
-              <span>PUBLIC CHANNELS</span>
-              <span className="text-emerald-300 ml-auto">{groupedChannels.public.length}</span>
-            </button>
+            <div className="flex items-center justify-between mb-2">
+              <button
+                onClick={() => toggleSection('public')}
+                className="flex items-center gap-2 text-sm font-medium text-emerald-100 hover:text-white"
+              >
+                {expandedSections.public ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <Hash className="h-4 w-4" />
+                <span>PUBLIC CHANNELS</span>
+                <span className="text-emerald-300 ml-2">{groupedChannels.public.length}</span>
+              </button>
+              <CreateChannelDialog
+                defaultType="PUBLIC"
+                trigger={
+                  <button
+                    className="p-1 rounded hover:bg-emerald-800/50"
+                    aria-label="Create public channel"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                }
+              />
+            </div>
             
             {expandedSections.public && groupedChannels.public.map(channel => (
               <button
                 key={channel.id}
                 onClick={() => handleChannelSelect(channel.id)}
-                className="flex items-center gap-2 w-full px-4 py-1 text-sm text-emerald-100 hover:text-white hover:bg-emerald-800/50 rounded"
+                className="flex items-center justify-center gap-2 w-full px-4 py-1 text-sm text-emerald-100 hover:text-white hover:bg-emerald-800/50 rounded"
               >
-                <span className="truncate">{channel.name}</span>
+                <span className="truncate text-center">{channel.name}</span>
                 {channel._count && channel._count.messages > (channel._count.lastViewedMessageCount || 0) && (
                   <span className="ml-auto text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full">
                     {channel._count.messages - (channel._count.lastViewedMessageCount || 0)}
@@ -109,15 +141,28 @@ export function ChannelSidebar() {
 
           {/* Private Channels */}
           <div>
-            <button
-              onClick={() => toggleSection('private')}
-              className="flex items-center gap-2 text-sm font-medium mb-2 text-emerald-100 hover:text-white w-full"
-            >
-              {expandedSections.private ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-              <Lock className="h-4 w-4" />
-              <span>PRIVATE CHANNELS</span>
-              <span className="text-emerald-300 ml-auto">{groupedChannels.private.length}</span>
-            </button>
+            <div className="flex items-center justify-between mb-2">
+              <button
+                onClick={() => toggleSection('private')}
+                className="flex items-center gap-2 text-sm font-medium text-emerald-100 hover:text-white"
+              >
+                {expandedSections.private ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <Lock className="h-4 w-4" />
+                <span>PRIVATE CHANNELS</span>
+                <span className="text-emerald-300 ml-2">{groupedChannels.private.length}</span>
+              </button>
+              <CreateChannelDialog
+                defaultType="PRIVATE"
+                trigger={
+                  <button
+                    className="p-1 rounded hover:bg-emerald-800/50"
+                    aria-label="Create private channel"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                }
+              />
+            </div>
             
             {expandedSections.private && groupedChannels.private.map(channel => (
               <button
@@ -137,15 +182,28 @@ export function ChannelSidebar() {
 
           {/* Direct Messages */}
           <div>
-            <button
-              onClick={() => toggleSection('dms')}
-              className="flex items-center gap-2 text-sm font-medium mb-2 text-emerald-100 hover:text-white w-full"
-            >
-              {expandedSections.dms ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-              <MessageSquare className="h-4 w-4" />
-              <span>DIRECT MESSAGES</span>
-              <span className="text-emerald-300 ml-auto">{groupedChannels.dms.length}</span>
-            </button>
+            <div className="flex items-center justify-between mb-2">
+              <button
+                onClick={() => toggleSection('dms')}
+                className="flex items-center gap-2 text-sm font-medium text-emerald-100 hover:text-white"
+              >
+                {expandedSections.dms ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <MessageSquare className="h-4 w-4" />
+                <span>DIRECT MESSAGES</span>
+                <span className="text-emerald-300 ml-2">{groupedChannels.dms.length}</span>
+              </button>
+              <CreateChannelDialog
+                defaultType="DM"
+                trigger={
+                  <button
+                    className="p-1 rounded hover:bg-emerald-800/50"
+                    aria-label="Create direct message"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                }
+              />
+            </div>
             
             {expandedSections.dms && groupedChannels.dms.map(channel => (
               <button
@@ -164,6 +222,22 @@ export function ChannelSidebar() {
           </div>
         </div>
       )}
+
+      {/* Create Button */}
+      <div className="mt-auto pt-4 border-t border-emerald-800">
+        <CreateChannelDialog
+          defaultType="PUBLIC"
+          trigger={
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-2 bg-emerald-800/50 hover:bg-emerald-800 border-0"
+            >
+              <Plus className="h-4 w-4" />
+              Create Channel
+            </Button>
+          }
+        />
+      </div>
 
       <BrowseChannelsModal
         open={isBrowseModalOpen}

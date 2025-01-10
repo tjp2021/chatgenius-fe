@@ -1,6 +1,6 @@
 import { useAuth } from '@clerk/nextjs';
 import { useEffect } from 'react';
-import { jwtService } from '@/lib/jwt';
+import { api, setAuthToken } from '@/lib/axios';
 
 export function useClerkToken() {
   const { getToken } = useAuth();
@@ -18,15 +18,16 @@ export function useClerkToken() {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
-          }
+          },
+          body: JSON.stringify({ clerkToken: token })
         });
 
         if (!response.ok) throw new Error('Failed to exchange token');
 
         const { token: jwt } = await response.json();
         
-        // Set the JWT in our service
-        jwtService.setToken(jwt);
+        // Configure axios to use the JWT
+        setAuthToken(() => Promise.resolve(jwt));
       } catch (error) {
         console.error('Error exchanging token:', error);
       }
@@ -34,6 +35,9 @@ export function useClerkToken() {
 
     // Exchange token on mount and when auth state changes
     exchangeToken();
+
+    // Configure axios to use Clerk token until exchange happens
+    setAuthToken(() => getToken());
 
     // Listen for refresh events
     const handleRefresh = () => exchangeToken();

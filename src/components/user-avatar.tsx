@@ -1,29 +1,37 @@
 'use client';
 
-import { useUser } from '@clerk/nextjs';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/axios';
+import { cn } from '@/lib/utils';
 import { User } from 'lucide-react';
 
 interface UserAvatarProps {
   userId: string;
+  className?: string;
 }
 
-export const UserAvatar = ({ userId }: UserAvatarProps) => {
-  const { user } = useUser();
-  const isCurrentUser = user?.id === userId;
+export function UserAvatar({ userId, className }: UserAvatarProps) {
+  const { data: user } = useQuery({
+    queryKey: ['users', userId],
+    queryFn: async () => {
+      const response = await api.get(`/users/${userId}`);
+      return response.data;
+    }
+  });
 
   return (
-    <div className="flex-shrink-0">
+    <div className={cn("relative inline-block", className)}>
       {user?.imageUrl ? (
         <img
           src={user.imageUrl}
-          alt={user.fullName || 'User'}
-          className="w-8 h-8 rounded-full"
+          alt={user.name || 'User'}
+          className="h-8 w-8 rounded-full object-cover"
         />
       ) : (
-        <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-          <User className="w-4 h-4 text-gray-500" />
+        <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center">
+          <User className="h-4 w-4 text-emerald-600" />
         </div>
       )}
     </div>
   );
-}; 
+} 

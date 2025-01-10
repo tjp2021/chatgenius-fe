@@ -5,21 +5,11 @@ import { Loader2, AlertCircle } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
-
-interface Message {
-  id?: string;
-  tempId?: string;
-  content: string;
-  userId: string;
-  channelId: string;
-  createdAt: string;
-  isPending?: boolean;
-  isFailed?: boolean;
-}
+import type { Message } from '@/types';
 
 interface MessageItemProps {
   message: Message;
-  onRetry?: (tempId: string) => void;
+  onRetry?: (messageId: string) => void;
 }
 
 export function MessageItem({ message, onRetry }: MessageItemProps) {
@@ -58,14 +48,14 @@ export function MessageItem({ message, onRetry }: MessageItemProps) {
           </div>
         )}
 
-        {message.isFailed && onRetry && message.tempId && (
+        {message.isFailed && onRetry && message.id && (
           <div className="flex items-center gap-2 mt-1">
             <AlertCircle className="h-4 w-4 text-destructive" />
             <span className="text-xs text-destructive">Failed to send</span>
             <Button 
               variant="ghost" 
               size="sm" 
-              onClick={() => onRetry(message.tempId!)}
+              onClick={() => onRetry(message.id!)}
               className="h-6 px-2 text-xs"
             >
               Retry

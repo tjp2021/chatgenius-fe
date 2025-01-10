@@ -1,41 +1,50 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { useSocket } from '@/providers/socket-provider';
+import { MessageEvent, TypingIndicator } from '@/types';
+import { FEATURES } from '@/config/features';
 
-interface TypingIndicatorProps {
-  typingUsers: Record<string, boolean>;
-  userNames: Record<string, string>;
-}
-
-export function TypingIndicator({ typingUsers, userNames }: TypingIndicatorProps) {
-  const [displayText, setDisplayText] = useState<string>('');
+export function TypingIndicatorDisplay({ channelId }: { channelId: string }) {
+  const [typingUsers, setTypingUsers] = useState<TypingIndicator[]>([]);
+  const { socket } = useSocket();
 
   useEffect(() => {
-    const activeTypers = Object.entries(typingUsers)
-      .filter(([_, isTyping]) => isTyping)
-      .map(([userId]) => userNames[userId] || 'Someone');
+    if (!socket || !FEATURES.ENABLE_REAL_TIME_FEATURES) return;
 
-    if (activeTypers.length === 0) {
-      setDisplayText('');
-    } else if (activeTypers.length === 1) {
-      setDisplayText(`${activeTypers[0]} is typing`);
-    } else if (activeTypers.length === 2) {
-      setDisplayText(`${activeTypers[0]} and ${activeTypers[1]} are typing`);
-    } else {
-      setDisplayText('Several people are typing');
-    }
-  }, [typingUsers, userNames]);
+    const handleTypingStart = (indicator: TypingIndicator) => {
+      setTypingUsers(prev => {
+        if (prev.some(u => u.userId === indicator.userId)) return prev;
+        return [...prev, indicator];
+      });
+    };
 
-  if (!displayText) return null;
+    const handleTypingStop = (indicator: TypingIndicator) => {
+      setTypingUsers(prev => 
+        prev.filter(u => u.userId !== indicator.userId)
+      );
+    };
+
+    socket.on(MessageEvent.TYPING_START, handleTypingStart);
+    socket.on(MessageEvent.TYPING_STOP, handleTypingStop);
+
+    return () => {
+      socket.off(MessageEvent.TYPING_START, handleTypingStart);
+      socket.off(MessageEvent.TYPING_STOP, handleTypingStop);
+    };
+  }, [socket, channelId]);
+
+  if (!typingUsers.length) return null;
 
   return (
-    <div 
-      className="flex items-center gap-2 text-sm text-muted-foreground px-4 py-1"
-      data-testid="typing-indicator"
-    >
-      <Loader2 className="h-3 w-3 animate-spin" />
-      <span>{displayText}...</span>
+    <div className="px-4 py-2 text-sm text-muted-foreground">
+      {typingUsers.length === 1 ? (
+        <p>{typingUsers[0].username} is typing...</p>
+      ) : typingUsers.length === 2 ? (
+        <p>{typingUsers[0].username} and {typingUsers[1].username} are typing...</p>
+      ) : (
+        <p>Several people are typing...</p>
+      )}
     </div>
   );
 } 

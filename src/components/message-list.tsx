@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMessages } from '@/hooks/use-messages';
 import { MessageInput } from './message-input';
 import { MessageItem } from './message-item';
+import { TypingIndicatorDisplay } from './typing-indicator';
 
 interface MessageListProps {
   channelId: string;
@@ -15,31 +16,28 @@ export const MessageList = ({ channelId }: MessageListProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
 
-  // Handle auto-scrolling
   useEffect(() => {
     if (!bottomRef.current || !containerRef.current) return;
-
-    const container = containerRef.current;
     
-    // Always scroll to bottom on initial load
     if (isLoading) {
       bottomRef.current.scrollIntoView();
       return;
     }
 
-    // Otherwise, respect the shouldAutoScroll setting
     if (shouldAutoScroll) {
       bottomRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, shouldAutoScroll, isLoading]);
 
-  // Monitor scroll position to determine if we should auto-scroll
   const handleScroll = () => {
     if (!containerRef.current) return;
     
-    const container = containerRef.current;
     const isScrolledToBottom = 
-      Math.abs(container.scrollHeight - container.scrollTop - container.clientHeight) < 50;
+      Math.abs(
+        containerRef.current.scrollHeight - 
+        containerRef.current.scrollTop - 
+        containerRef.current.clientHeight
+      ) < 50;
     
     setShouldAutoScroll(isScrolledToBottom);
   };
@@ -70,8 +68,9 @@ export const MessageList = ({ channelId }: MessageListProps) => {
           />
         ))}
         <div ref={bottomRef} />
+        <TypingIndicatorDisplay channelId={channelId} />
       </div>
-      <MessageInput onSend={sendMessage} />
+      <MessageInput channelId={channelId} onSend={sendMessage} />
     </div>
   );
 }; 

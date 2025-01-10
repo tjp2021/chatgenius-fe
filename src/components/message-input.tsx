@@ -4,14 +4,17 @@ import { useState, useRef, KeyboardEvent } from 'react';
 import { Send } from 'lucide-react';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
+import { useTyping } from '@/hooks/use-typing';
 
 interface MessageInputProps {
+  channelId: string;
   onSend: (content: string) => void;
 }
 
-export function MessageInput({ onSend }: MessageInputProps) {
+export function MessageInput({ channelId, onSend }: MessageInputProps) {
   const [content, setContent] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { sendTypingStart } = useTyping(channelId);
 
   const handleSend = () => {
     if (!content.trim()) return;
@@ -24,6 +27,8 @@ export function MessageInput({ onSend }: MessageInputProps) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    } else {
+      sendTypingStart();
     }
   };
 
@@ -33,7 +38,10 @@ export function MessageInput({ onSend }: MessageInputProps) {
         <Textarea
           ref={textareaRef}
           value={content}
-          onChange={(e) => setContent(e.target.value)}
+          onChange={(e) => {
+            setContent(e.target.value);
+            sendTypingStart();
+          }}
           onKeyDown={handleKeyDown}
           placeholder="Type a message..."
           className="min-h-[20px] max-h-[200px] resize-none"

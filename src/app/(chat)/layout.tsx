@@ -2,7 +2,6 @@
 
 import { useClerkToken } from '@/hooks/useClerkToken';
 import { ChannelSidebar } from '@/components/channel-sidebar';
-import { ChatHeader } from '@/components/chat/chat-header';
 
 export default function ChatLayout({
   children,

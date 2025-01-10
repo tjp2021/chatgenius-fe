@@ -2,169 +2,154 @@
 
 import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Channel, ChannelType } from '@/types/channel';
-import { api } from '@/lib/axios';
+import { useApi } from '@/hooks/useApi';
 import { useSocket } from '@/providers/socket-provider';
-import { useToast } from '@/components/ui/use-toast';
+import type { Channel, ChannelMutationResponse } from '@/types/channel';
 
-interface ChannelResponse {
-  channels: Channel[];
-}
-
-interface ChannelMutationResponse {
-  channel: Channel;
-}
-
-interface MembershipResponse {
-  channelId: string;
-  userId: string;
-  role: string;
-  joinedAt: string;
-  channel: {
-    id: string;
-    name: string;
-    description: string;
-    type: ChannelType;
-  };
+interface APIResponse<T> {
+  data: T;
+  success: boolean;
+  error?: string;
 }
 
 export function useChannels() {
-  const { socket, isConnected } = useSocket();
-  const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { socket } = useSocket();
+  const api = useApi();
 
-  // Use React Query for REST API state
-  const { data: channelsData, isLoading, error } = useQuery<ChannelResponse>({
-    queryKey: ['channels', 'browse', 'joined'],
+  // Fetch channels
+  const { data: channels = [], isLoading } = useQuery({
+    queryKey: ['channels'],
     queryFn: async () => {
-      console.log('🔄 [CHANNELS] Fetching joined channels');
-      const response = await api.get<ChannelResponse>('/channels/browse/joined');
-      return response.data;
-    },
-    staleTime: 0, // Always fetch fresh data on mount
-    refetchOnMount: true, // Refetch when component mounts
-    retry: 3, // Retry failed requests 3 times
+      const response = await api.getChannels() as APIResponse<Channel[]>;
+      console.log('Raw API response:', response); // Log entire response
+      
+      // Handle both possible response formats
+      let channelData: Channel[] = [];
+      
+      // If response itself is the array
+      if (Array.isArray(response)) {
+        console.log('Response is array, length:', response.length);
+        channelData = response;
+      }
+      // If response.data is the array
+      else if (Array.isArray(response.data)) {
+        console.log('Response.data is array, length:', response.data.length);
+        channelData = response.data;
+      }
+      // If response is array-like object with numeric keys
+      else if (response && typeof response === 'object' && 'length' in response) {
+        console.log('Response is array-like object, length:', (response as any).length);
+        const length = Number((response as any).length);
+        if (!isNaN(length)) {
+          channelData = Array.from({ length }, (_, i) => (response as any)[i] as Channel);
+        }
+      }
+      // If response.data is array-like object with numeric keys
+      else if (response?.data && typeof response.data === 'object' && 'length' in response.data) {
+        console.log('Response.data is array-like object, length:', (response.data as any).length);
+        const length = Number((response.data as any).length);
+        if (!isNaN(length)) {
+          channelData = Array.from({ length }, (_, i) => (response.data as any)[i] as Channel);
+        }
+      }
+
+      console.log('Final processed channel data:', channelData);
+      return channelData;
+    }
   });
 
+  // Log whenever channels update
+  useEffect(() => {
+    console.log('Channels updated in useChannels:', channels);
+  }, [channels]);
+
   // Join channel mutation
-  const joinChannelMutation = useMutation({
+  const joinChannelMutation = useMutation<ChannelMutationResponse, Error, string>({
     mutationFn: async (channelId: string) => {
-      const response = await api.post<ChannelMutationResponse>(`/channels/${channelId}/join`);
-      return response.data;
+      const response = await api.joinChannel(channelId);
+      // After successful API call, emit socket event
+      if (response.success && socket?.connected) {
+        socket.emit('channel:join', { channelId });
+      }
+      return response;
     },
-    onSuccess: (data) => {
-      console.log('✅ [JOIN] Successfully joined channel:', data.channel.id);
-      
-      // Update the public channels list
-      queryClient.setQueryData(['channels', 'browse', 'public'], (old: any) => {
-        if (!old?.channels) return old;
-        return {
-          ...old,
-          channels: old.channels.map((ch: Channel) => 
-            ch.id === data.channel.id ? { ...ch, isMember: true } : ch
-          )
-        };
-      });
-
-      // Trigger a refetch of joined channels instead of optimistic update
-      queryClient.invalidateQueries({ queryKey: ['channels', 'browse', 'joined'] });
-
-      toast({
-        title: 'Success',
-        description: 'Successfully joined the channel',
-      });
-    },
-    onError: (error) => {
-      console.error('❌ [JOIN] Failed to join channel:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to join channel',
-        variant: 'destructive',
-      });
+    onSuccess: (response) => {
+      if (response.success && response.channel) {
+        queryClient.setQueryData(['channels'], (old: Channel[] = []) => {
+          const exists = old.some(ch => ch.id === response.channel!.id);
+          if (exists) {
+            return old.map(ch => ch.id === response.channel!.id ? response.channel! : ch);
+          }
+          return [...old, response.channel];
+        });
+      }
     }
   });
 
   // Leave channel mutation
-  const leaveChannelMutation = useMutation({
+  const leaveChannelMutation = useMutation<ChannelMutationResponse, Error, string>({
     mutationFn: async (channelId: string) => {
-      const response = await api.post(`/channels/${channelId}/leave`);
-      return response.data;
+      const response = await api.leaveChannel(channelId);
+      // After successful API call, emit socket event
+      if (response.success && socket?.connected) {
+        socket.emit('channel:leave', { channelId });
+      }
+      return response;
     },
-    onSuccess: (_, channelId) => {
-      console.log('✅ [LEAVE] Successfully left channel:', channelId);
-      
-      // Update the public channels list
-      queryClient.setQueryData(['channels', 'browse', 'public'], (old: any) => {
-        if (!old?.channels) return old;
-        return {
-          ...old,
-          channels: old.channels.map((ch: Channel) => 
-            ch.id === channelId ? { ...ch, isMember: false } : ch
-          )
-        };
-      });
-
-      // Trigger a refetch of joined channels instead of optimistic update
-      queryClient.invalidateQueries({ queryKey: ['channels', 'browse', 'joined'] });
-
-      toast({
-        title: 'Success',
-        description: 'Successfully left the channel',
-      });
-    },
-    onError: (error) => {
-      console.error('❌ [LEAVE] Failed to leave channel:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to leave channel',
-        variant: 'destructive',
-      });
+    onSuccess: (response, channelId) => {
+      if (response.success) {
+        queryClient.setQueryData(['channels'], (old: Channel[] = []) => {
+          return old.filter(ch => ch.id !== channelId);
+        });
+      }
     }
   });
 
-  // Listen for channel updates
+  // Socket event handlers
   useEffect(() => {
-    if (!socket || !isConnected) return;
+    if (!socket) return;
 
-    console.log('🔌 [SOCKET] Setting up channel event listeners');
-
-    const handleMemberJoined = (data: any) => {
-      console.log('🎯 [SOCKET JOIN] Event received:', data);
-      
-      if (data.userId === socket.auth?.userId) {
-        // Instead of complex cache manipulation, just refetch the data
-        queryClient.invalidateQueries({ queryKey: ['channels', 'browse', 'joined'] });
-      }
+    const handleChannelCreated = (data: { channel: Channel }) => {
+      console.log('Channel created event:', data); // Debug log
+      queryClient.setQueryData(['channels'], (old: Channel[] = []) => {
+        const exists = old.some(ch => ch.id === data.channel.id);
+        if (exists) return old;
+        return [...old, data.channel];
+      });
     };
 
-    const handleMemberLeft = (data: any) => {
-      console.log('🎯 [SOCKET LEAVE] Event received:', data);
-      
-      if (data.userId === socket.auth?.userId) {
-        // Instead of complex cache manipulation, just refetch the data
-        queryClient.invalidateQueries({ queryKey: ['channels', 'browse', 'joined'] });
-      }
+    const handleChannelUpdated = (data: { channel: Channel }) => {
+      console.log('Channel updated event:', data); // Debug log
+      queryClient.setQueryData(['channels'], (old: Channel[] = []) => {
+        return old.map(ch => ch.id === data.channel.id ? data.channel : ch);
+      });
     };
 
-    // Subscribe to events
-    socket.on('channel:member_joined', handleMemberJoined);
-    socket.on('channel:member_left', handleMemberLeft);
+    const handleChannelDeleted = (data: { channelId: string }) => {
+      console.log('Channel deleted event:', data); // Debug log
+      queryClient.setQueryData(['channels'], (old: Channel[] = []) => {
+        return old.filter(ch => ch.id !== data.channelId);
+      });
+    };
 
-    // Cleanup
+    socket.on('channel:created', handleChannelCreated);
+    socket.on('channel:updated', handleChannelUpdated);
+    socket.on('channel:deleted', handleChannelDeleted);
+
     return () => {
-      console.log('🧹 [SOCKET] Cleaning up channel event listeners');
-      socket.off('channel:member_joined', handleMemberJoined);
-      socket.off('channel:member_left', handleMemberLeft);
+      socket.off('channel:created', handleChannelCreated);
+      socket.off('channel:updated', handleChannelUpdated);
+      socket.off('channel:deleted', handleChannelDeleted);
     };
-  }, [socket, isConnected, queryClient]);
+  }, [socket, queryClient]);
+
+  console.log('Current channels:', channels); // Debug log
 
   return {
-    channels: channelsData?.channels ?? [],
-    loading: isLoading,
-    error: error as Error | null,
-    joinChannel: (channelId: string) => joinChannelMutation.mutateAsync(channelId),
-    leaveChannel: (channelId: string) => leaveChannelMutation.mutateAsync(channelId),
-    isJoining: joinChannelMutation.isPending,
-    isLeaving: leaveChannelMutation.isPending
+    channels,
+    isLoading,
+    joinChannel: joinChannelMutation.mutateAsync,
+    leaveChannel: leaveChannelMutation.mutateAsync
   };
 } 
