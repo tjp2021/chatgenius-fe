@@ -30,7 +30,7 @@ export function ChannelSidebar() {
   const { isLoaded: authLoading, user } = useUser();
   const [isBrowseModalOpen, setIsBrowseModalOpen] = useState(false);
   const [channelToLeave, setChannelToLeave] = useState<Channel | null>(null);
-  const { channels, isLoading: isLoadingChannels, refreshChannels } = useChannelContext();
+  const { channels, isLoading: isLoadingChannels, joinChannel, leaveChannel } = useChannelContext();
   const [isOpen, setIsOpen] = useState(false);
   
   // Debug log when channels update
@@ -73,7 +73,6 @@ export function ChannelSidebar() {
     return acc;
   }, { public: [], private: [], dms: [] });
 
-  // Debug log the grouped channels
   console.log('Grouped channels:', groupedChannels);
 
   const handleChannelSelect = (channelId: string) => {
@@ -87,10 +86,14 @@ export function ChannelSidebar() {
     }));
   };
 
-  // Refresh channels when sidebar mounts and after any channel action
-  useEffect(() => {
-    refreshChannels();
-  }, [refreshChannels]);
+  const handleLeaveChannel = async (channel: Channel) => {
+    try {
+      await leaveChannel(channel.id);
+      setChannelToLeave(null);
+    } catch (error) {
+      console.error('Error leaving channel:', error);
+    }
+  };
 
   // Show loader only if auth OR channels are loading
   if (!authLoading || isLoadingChannels) {
@@ -157,6 +160,7 @@ export function ChannelSidebar() {
               onClick={() => handleChannelSelect(channel.id)}
               className="flex items-center gap-2 w-full px-4 py-1 text-sm text-emerald-100 hover:text-white hover:bg-emerald-800/50 rounded"
             >
+              <Lock className="h-4 w-4" />
               <span className="truncate">{channel.name}</span>
               {channel._count && channel._count.messages > (channel._count.lastViewedMessageCount || 0) && (
                 <span className="ml-auto text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full">
@@ -221,30 +225,28 @@ export function ChannelSidebar() {
       />
 
       <BrowseChannelsModal
-        open={isBrowseModalOpen}
-        onOpenChange={setIsBrowseModalOpen}
+        isOpen={isBrowseModalOpen}
+        onClose={setIsBrowseModalOpen}
       />
 
       <Dialog open={!!channelToLeave}>
         <DialogContent>
           <DialogTitle>Leave Channel</DialogTitle>
           <DialogDescription>
-            As the owner of <span className="font-medium">{channelToLeave?.name}</span>, what would you like to do?
+            Are you sure you want to leave <span className="font-medium">{channelToLeave?.name}</span>?
           </DialogDescription>
           
-          <Button variant="outline">
-            Leave and Transfer Ownership
-            <span className="text-sm text-muted-foreground ml-2">
-              (Ownership will be transferred to another member)
-            </span>
-          </Button>
-          
-          <Button variant="destructive">
-            Delete Channel
-            <span className="text-sm text-destructive-foreground ml-2">
-              (This action cannot be undone)
-            </span>
-          </Button>
+          <div className="flex justify-end gap-4 mt-4">
+            <Button variant="outline" onClick={() => setChannelToLeave(null)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={() => channelToLeave && handleLeaveChannel(channelToLeave)}
+            >
+              Leave Channel
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

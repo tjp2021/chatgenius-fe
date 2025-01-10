@@ -33,7 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         
         console.log('Setting auth token');
-        setAuthToken(() => Promise.resolve(token));
+        setAuthToken(() => Promise.resolve(`Bearer ${token}`));
       } catch (error) {
         console.error('Auth initialization error:', error);
         setAuthToken(() => Promise.resolve(null));

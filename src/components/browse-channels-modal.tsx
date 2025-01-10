@@ -1,212 +1,190 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import type { Channel } from '@/types/channel';
-import { Button } from '@/components/ui/button';
+import { useState, type Dispatch, type SetStateAction } from 'react';
+import { useAuth } from '@clerk/nextjs';
 import { useChannelContext } from '@/contexts/channel-context';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { useToast } from '@/components/ui/use-toast';
-import { Hash } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useUser } from '@clerk/nextjs';
-import { useApi } from '@/hooks/useApi';
-import { useQueryClient } from '@tanstack/react-query';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
+import { Loader2 } from 'lucide-react';
+import { useToast } from '@/components/ui/use-toast';
+import { Channel } from '@/types/channel';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 interface BrowseChannelsModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  isOpen: boolean;
+  onClose: Dispatch<SetStateAction<boolean>>;
 }
 
-export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalProps) {
-  const router = useRouter();
+export function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsModalProps) {
+  const { userId, getToken } = useAuth();
+  const { joinChannel, leaveChannel } = useChannelContext();
   const { toast } = useToast();
-  const { channels, joinChannel, refreshChannels } = useChannelContext();
-  const { user } = useUser();
-  const api = useApi();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState('public');
-  const [channelToDelete, setChannelToDelete] = useState<Channel | null>(null);
+  const [isLeaving, setIsLeaving] = useState<string | null>(null);
+  const [isJoining, setIsJoining] = useState<string | null>(null);
 
-  // Memoize filtered channels
-  const publicChannels = useMemo(() => 
-    channels.filter(channel => 
-      channel.type === 'PUBLIC' && 
-      !channel.members?.some(m => m.userId === user?.id)
-    ),
-    [channels, user?.id]
+  // Fetch all channels
+  const { data: allChannels = [], isLoading } = useQuery<Channel[]>({
+    queryKey: ['all-channels'],
+    queryFn: async () => {
+      const token = await getToken();
+      if (!token) {
+        throw new Error('No authentication token available');
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels?include=members.user`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (!response.ok) throw new Error('Failed to fetch channels');
+      return response.json();
+    }
+  });
+
+  // Filter channels based on membership and type
+  const publicChannels = allChannels.filter(channel => 
+    channel.type === 'PUBLIC' && 
+    !channel.members?.some(member => member.userId === userId)
   );
 
-  const joinedChannels = useMemo(() => 
-    channels.filter(channel => 
-      channel.type === 'PUBLIC' && 
-      channel.members?.some(m => m.userId === user?.id)
-    ),
-    [channels, user?.id]
+  const joinedChannels = allChannels.filter(channel => 
+    channel.members?.some(member => member.userId === userId)
   );
 
-  const handleJoinChannel = useCallback(async (channelId: string) => {
+  const handleJoinChannel = async (channelId: string) => {
     try {
+      setIsJoining(channelId);
       await joinChannel(channelId);
-      router.push(`/channels/${channelId}`);
-      onOpenChange(false);
-      await refreshChannels();
-      toast({
-        title: 'Channel joined successfully',
-        duration: 3000
-      });
-    } catch (error) {
-      toast({
-        title: 'Failed to join channel',
-        variant: 'destructive',
-        duration: 3000
-      });
-    }
-  }, [joinChannel, router, onOpenChange, toast, refreshChannels]);
-
-  const handleLeaveChannel = useCallback(async (channel: Channel) => {
-    // Keep owner check for private channels
-    if (channel.type === 'PRIVATE' && channel.ownerId === user?.id) {
-      setChannelToDelete(channel);
-      return;
-    }
-
-    try {
-      await api.leaveChannel(channel.id, false);
-      
-      // Refresh channels immediately
-      await refreshChannels();
-      
-      // Close modal and redirect only after refresh
-      onOpenChange(false);
-      router.push('/channels');
-      
-      toast({
-        title: 'Left channel successfully',
-        duration: 3000
-      });
-    } catch (error) {
-      toast({
-        title: 'Failed to leave channel',
-        variant: 'destructive',
-        duration: 3000
-      });
-    }
-  }, [api, router, toast, refreshChannels, user?.id]);
-
-  const handleDeleteChannel = useCallback(async () => {
-    if (!channelToDelete) return;
-
-    try {
-      await api.leaveChannel(channelToDelete.id, true);
-      // Invalidate channels query to refresh the list
+      // Invalidate both queries to refresh the lists
+      await queryClient.invalidateQueries({ queryKey: ['all-channels'] });
       await queryClient.invalidateQueries({ queryKey: ['channels'] });
-      setChannelToDelete(null);
-      onOpenChange(false);
-      router.push('/channels');
-      await refreshChannels();
+      // Force an immediate refetch
+      await queryClient.refetchQueries({ queryKey: ['channels'] });
       toast({
-        title: 'Channel deleted successfully',
-        duration: 3000
+        title: 'Success',
+        description: 'You have joined the channel',
       });
     } catch (error) {
       toast({
-        title: 'Failed to delete channel',
+        title: 'Error',
+        description: 'Failed to join channel',
         variant: 'destructive',
-        duration: 3000
       });
+    } finally {
+      setIsJoining(null);
     }
-  }, [channelToDelete, api, router, toast, onOpenChange, queryClient, refreshChannels]);
+  };
+
+  const handleLeaveChannel = async (channelId: string) => {
+    try {
+      setIsLeaving(channelId);
+      await leaveChannel(channelId);
+      // Invalidate both queries to refresh the lists
+      await queryClient.invalidateQueries({ queryKey: ['all-channels'] });
+      await queryClient.invalidateQueries({ queryKey: ['channels'] });
+      // Force an immediate refetch
+      await queryClient.refetchQueries({ queryKey: ['channels'] });
+      toast({
+        title: 'Success',
+        description: 'You have left the channel',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to leave channel',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLeaving(null);
+    }
+  };
 
   return (
-    <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Browse Channels</DialogTitle>
-          </DialogHeader>
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="public">Public Channels</TabsTrigger>
-              <TabsTrigger value="joined">Joined Channels</TabsTrigger>
-            </TabsList>
-            <TabsContent value="public" className="mt-4">
-              <ScrollArea className="max-h-[420px] pr-6">
-                {publicChannels.length === 0 ? (
-                  <p className="text-center text-muted-foreground">No public channels available</p>
-                ) : (
-                  <div className="space-y-4">
-                    {publicChannels.map((channel) => (
-                      <div key={channel.id} className="flex items-center justify-between py-2">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
-                            <Hash className="w-4 h-4 text-emerald-900" />
-                          </div>
-                          <span className="font-medium">{channel.name}</span>
-                        </div>
-                        <Button 
-                          variant="default" 
-                          size="sm"
-                          onClick={() => handleJoinChannel(channel.id)}
-                        >
-                          Join
-                        </Button>
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Browse Channels</DialogTitle>
+        </DialogHeader>
+        <Tabs defaultValue="public" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="public">Public Channels</TabsTrigger>
+            <TabsTrigger value="joined">Joined Channels</TabsTrigger>
+          </TabsList>
+          <TabsContent value="public">
+            <ScrollArea className="mt-4 h-[300px] rounded-md border p-4">
+              {isLoading ? (
+                <div className="flex justify-center items-center h-full">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                </div>
+              ) : publicChannels.length === 0 ? (
+                <p className="text-center text-sm text-muted-foreground">No public channels available</p>
+              ) : (
+                <div className="space-y-4">
+                  {publicChannels.map((channel) => (
+                    <div key={channel.id} className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium"># {channel.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {channel.members?.length || 0} members
+                        </p>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-            </TabsContent>
-            <TabsContent value="joined" className="mt-4">
-              <ScrollArea className="max-h-[420px] pr-6">
-                {joinedChannels.length === 0 ? (
-                  <p className="text-center text-muted-foreground">You haven't joined any channels yet</p>
-                ) : (
-                  <div className="space-y-4">
-                    {joinedChannels.map((channel) => (
-                      <div key={channel.id} className="flex items-center justify-between py-2">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
-                            <Hash className="w-4 h-4 text-emerald-900" />
-                          </div>
-                          <span className="font-medium">{channel.name}</span>
-                        </div>
-                        <Button 
-                          variant={channel.ownerId === user?.id ? "destructive" : "default"}
-                          size="sm"
-                          onClick={() => channel.ownerId === user?.id ? setChannelToDelete(channel) : handleLeaveChannel(channel)}
-                        >
-                          {channel.ownerId === user?.id ? "Delete" : "Leave"}
-                        </Button>
+                      <Button 
+                        onClick={() => handleJoinChannel(channel.id)}
+                        disabled={isJoining === channel.id}
+                      >
+                        {isJoining === channel.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          'Join'
+                        )}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </TabsContent>
+          <TabsContent value="joined">
+            <ScrollArea className="mt-4 h-[300px] rounded-md border p-4">
+              {isLoading ? (
+                <div className="flex justify-center items-center h-full">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                </div>
+              ) : joinedChannels.length === 0 ? (
+                <p className="text-center text-sm text-muted-foreground">You haven't joined any channels yet</p>
+              ) : (
+                <div className="space-y-4">
+                  {joinedChannels.map((channel) => (
+                    <div key={channel.id} className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium"># {channel.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {channel.members?.length || 0} members
+                        </p>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-            </TabsContent>
-          </Tabs>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!channelToDelete} onOpenChange={() => setChannelToDelete(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Channel</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete <span className="font-medium">{channelToDelete?.name}</span>? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setChannelToDelete(null)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDeleteChannel}>
-              Delete Channel
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+                      <Button 
+                        variant="destructive"
+                        onClick={() => handleLeaveChannel(channel.id)}
+                        disabled={isLeaving === channel.id}
+                      >
+                        {isLeaving === channel.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          'Leave'
+                        )}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </TabsContent>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
   );
 } 

@@ -6,41 +6,27 @@ export function useClerkToken() {
   const { getToken } = useAuth();
 
   useEffect(() => {
-    const exchangeToken = async () => {
+    const initializeToken = async () => {
       try {
-        // Get the Clerk session token
         const token = await getToken();
-        if (!token) return;
+        if (!token) {
+          setAuthToken(() => Promise.resolve(null));
+          return;
+        }
 
-        // Exchange Clerk token for JWT
-        const response = await fetch('/api/auth/token', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ clerkToken: token })
-        });
-
-        if (!response.ok) throw new Error('Failed to exchange token');
-
-        const { token: jwt } = await response.json();
-        
-        // Configure axios to use the JWT
-        setAuthToken(() => Promise.resolve(jwt));
+        // Set the token with Bearer prefix
+        setAuthToken(() => Promise.resolve(`Bearer ${token}`));
       } catch (error) {
-        console.error('Error exchanging token:', error);
+        console.error('Error setting token:', error);
+        setAuthToken(() => Promise.resolve(null));
       }
     };
 
-    // Exchange token on mount and when auth state changes
-    exchangeToken();
-
-    // Configure axios to use Clerk token until exchange happens
-    setAuthToken(() => getToken());
+    // Initialize token on mount and when auth state changes
+    initializeToken();
 
     // Listen for refresh events
-    const handleRefresh = () => exchangeToken();
+    const handleRefresh = () => initializeToken();
     window.addEventListener('jwt:refresh-needed', handleRefresh);
 
     return () => {

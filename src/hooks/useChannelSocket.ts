@@ -6,13 +6,24 @@ import { useToast } from '@/components/ui/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Channel } from '@/types/channel';
 
-export function useChannelSocket(currentChannelId?: string) {
-  const { socket } = useSocket();
+interface ChannelEvent {
+  type?: 'member_left' | 'member_joined';
+  channelId?: string;
+  userId?: string;
+  member?: any;
+  channel?: Channel;
+  error?: string;
+}
+
+export function useChannelSocket() {
+  const { socket, isConnected } = useSocket();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   // Handle channel events
-  const handleChannelEvent = useCallback((event: any) => {
+  const handleChannelEvent = useCallback((event: ChannelEvent) => {
+    console.log('Channel event received:', event);
+
     if (event.error) {
       toast({
         title: 'Channel Error',
@@ -24,17 +35,63 @@ export function useChannelSocket(currentChannelId?: string) {
 
     // Update channel data in cache
     queryClient.setQueryData(['channels'], (old: Channel[] = []) => {
-      const index = old.findIndex(ch => ch.id === event.channel.id);
-      if (index === -1) {
-        return [...old, event.channel];
+      // For member_left event
+      if (event.type === 'member_left' && event.channelId && event.userId) {
+        console.log('Member left event:', event);
+        // If current user left, remove the channel
+        if (event.userId === socket?.auth?.userId) {
+          return old.filter(ch => ch.id !== event.channelId);
+        }
+        // If another user left, update the members list
+        return old.map(ch => {
+          if (ch.id === event.channelId) {
+            return {
+              ...ch,
+              members: (ch.members || []).filter(m => m.userId !== event.userId)
+            };
+          }
+          return ch;
+        });
       }
-      return old.map(ch => ch.id === event.channel.id ? event.channel : ch);
-    });
-  }, [toast, queryClient]);
 
-  // Subscribe to channel events
+      // For member_joined event
+      if (event.type === 'member_joined' && event.channelId && event.member) {
+        console.log('Member joined event:', event);
+        return old.map(ch => {
+          if (ch.id === event.channelId) {
+            return {
+              ...ch,
+              members: [...(ch.members || []), event.member]
+            };
+          }
+          return ch;
+        });
+      }
+
+      // For channel updates (created, updated)
+      if (event.channel) {
+        console.log('Channel update event:', event);
+        const channelWithMembers = {
+          ...event.channel,
+          members: event.channel.members || []
+        };
+
+        const exists = old.some(ch => ch.id === channelWithMembers.id);
+        if (!exists) {
+          return [...old, channelWithMembers];
+        }
+        return old.map(ch => ch.id === channelWithMembers.id ? channelWithMembers : ch);
+      }
+
+      return old;
+    });
+  }, [toast, queryClient, socket?.auth?.userId]);
+
+  // Subscribe to channel events when socket is connected
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !isConnected) return;
+
+    console.log('Setting up channel event listeners');
 
     socket.on('channel:created', handleChannelEvent);
     socket.on('channel:updated', handleChannelEvent);
@@ -43,15 +100,17 @@ export function useChannelSocket(currentChannelId?: string) {
     socket.on('channel:error', handleChannelEvent);
 
     return () => {
+      console.log('Cleaning up channel event listeners');
       socket.off('channel:created', handleChannelEvent);
       socket.off('channel:updated', handleChannelEvent);
       socket.off('channel:member_joined', handleChannelEvent);
       socket.off('channel:member_left', handleChannelEvent);
       socket.off('channel:error', handleChannelEvent);
     };
-  }, [socket, handleChannelEvent]);
+  }, [socket, isConnected, handleChannelEvent]);
 
   return {
-    socket
+    socket,
+    isConnected
   };
 } 

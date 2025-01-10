@@ -67,7 +67,7 @@ export function useChannels() {
   // Join channel mutation
   const joinChannelMutation = useMutation<ChannelMutationResponse, Error, string>({
     mutationFn: async (channelId: string) => {
-      const response = await api.joinChannel(channelId);
+      const response = await api.getChannels() as APIResponse<Channel[]>;
       // After successful API call, emit socket event
       if (response.success && socket?.connected) {
         socket.emit('channel:join', { channelId });
@@ -92,16 +92,26 @@ export function useChannels() {
     mutationFn: async (channelId: string) => {
       const response = await api.leaveChannel(channelId);
       // After successful API call, emit socket event
-      if (response.success && socket?.connected) {
+      if (socket?.connected) {
         socket.emit('channel:leave', { channelId });
       }
-      return response;
+      return {
+        success: true,
+        channel: undefined
+      };
     },
     onSuccess: (response, channelId) => {
-      if (response.success) {
-        queryClient.setQueryData(['channels'], (old: Channel[] = []) => {
-          return old.filter(ch => ch.id !== channelId);
-        });
+      // Remove channel from cache
+      queryClient.setQueryData(['channels'], (old: Channel[] = []) => {
+        return old.filter(ch => ch.id !== channelId);
+      });
+      
+      // Force refetch to ensure we have the latest data
+      queryClient.invalidateQueries({ queryKey: ['channels'] });
+
+      // Emit socket event for real-time updates
+      if (socket?.connected) {
+        socket.emit('channel:member_left', { channelId });
       }
     }
   });
