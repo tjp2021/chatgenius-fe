@@ -1,73 +1,74 @@
 'use client';
 
-import { useSocket } from '@/providers/socket-provider';
+import { useAuth } from '@clerk/nextjs';
+import { Loader2, AlertCircle } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
-import { Loader2, AlertCircle, Check } from 'lucide-react';
+
+interface Message {
+  id?: string;
+  tempId?: string;
+  content: string;
+  userId: string;
+  channelId: string;
+  createdAt: string;
+  isPending?: boolean;
+  isFailed?: boolean;
+}
 
 interface MessageItemProps {
-  message: {
-    id: string;
-    content: string;
-    userId: string;
-    userName: string;
-    createdAt: string;
-    isPending?: boolean;
-    isFailed?: boolean;
-    tempId?: string;
-  };
+  message: Message;
   onRetry?: (tempId: string) => void;
 }
 
-export const MessageItem = ({ message, onRetry }: MessageItemProps) => {
-  const { socket } = useSocket();
-  const isCurrentUser = message.userId === socket?.auth?.userId;
+export function MessageItem({ message, onRetry }: MessageItemProps) {
+  const { userId } = useAuth();
+  const isOwn = message.userId === userId;
 
   return (
     <div className={cn(
-      "flex gap-2 w-full",
-      isCurrentUser ? "justify-end" : "justify-start"
+      "flex gap-3 items-start",
+      isOwn && "flex-row-reverse"
     )}>
+      <Avatar className="h-8 w-8">
+        <AvatarImage src={`https://avatar.vercel.sh/${message.userId}`} />
+        <AvatarFallback>U</AvatarFallback>
+      </Avatar>
+
       <div className={cn(
-        "flex flex-col max-w-[70%] space-y-1",
-        isCurrentUser ? "items-end" : "items-start"
+        "flex flex-col",
+        isOwn && "items-end"
       )}>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">
-            {message.userName}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            {format(new Date(message.createdAt), 'HH:mm')}
-          </span>
-        </div>
         <div className={cn(
-          "rounded-lg px-4 py-2",
-          isCurrentUser 
-            ? "bg-emerald-500 text-white" 
-            : "bg-secondary"
+          "px-4 py-2 rounded-lg",
+          isOwn ? "bg-primary text-primary-foreground" : "bg-muted"
         )}>
           {message.content}
         </div>
-        {isCurrentUser && (
-          <div className="flex items-center gap-1 h-4">
-            {message.isPending && (
-              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-            )}
-            {message.isFailed && (
-              <button
-                onClick={() => onRetry?.(message.tempId!)}
-                className="flex items-center gap-1 text-xs text-destructive hover:underline"
-              >
-                <AlertCircle className="h-3 w-3" />
-                Failed - Click to retry
-              </button>
-            )}
-            {!message.isPending && !message.isFailed && (
-              <Check className="h-3 w-3 text-muted-foreground" />
-            )}
+
+        {message.isPending && (
+          <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Sending...
+          </div>
+        )}
+
+        {message.isFailed && onRetry && (
+          <div className="flex items-center gap-2 mt-1">
+            <AlertCircle className="h-4 w-4 text-destructive" />
+            <span className="text-xs text-destructive">Failed to send</span>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => message.tempId && onRetry(message.tempId)}
+              className="h-6 px-2 text-xs"
+            >
+              Retry
+            </Button>
           </div>
         )}
       </div>
     </div>
   );
-}; 
+} 

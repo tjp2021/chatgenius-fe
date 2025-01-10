@@ -1,40 +1,52 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, KeyboardEvent } from 'react';
 import { Send } from 'lucide-react';
+import { Button } from './ui/button';
+import { Textarea } from './ui/textarea';
 
 interface MessageInputProps {
   onSend: (content: string) => void;
 }
 
-export const MessageInput = ({ onSend }: MessageInputProps) => {
+export function MessageInput({ onSend }: MessageInputProps) {
   const [content, setContent] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSend = () => {
     if (!content.trim()) return;
     onSend(content);
     setContent('');
+    textareaRef.current?.focus();
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="p-4 border-t">
-      <div className="flex items-center gap-2">
-        <input
-          type="text"
+    <div className="p-4 border-t">
+      <div className="flex gap-2">
+        <Textarea
+          ref={textareaRef}
           value={content}
           onChange={(e) => setContent(e.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder="Type a message..."
-          className="flex-1 px-4 py-2 rounded-full border focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          className="min-h-[20px] max-h-[200px] resize-none"
+          rows={1}
         />
-        <button
-          type="submit"
+        <Button 
+          onClick={handleSend}
           disabled={!content.trim()}
-          className="p-2 rounded-full bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          size="icon"
         >
-          <Send className="w-5 h-5" />
-        </button>
+          <Send className="h-4 w-4" />
+        </Button>
       </div>
-    </form>
+    </div>
   );
-}; 
+} 

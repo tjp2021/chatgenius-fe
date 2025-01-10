@@ -1,23 +1,16 @@
 'use client';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AuthProvider } from './auth-provider';
-import { SocketProvider } from './socket-provider';
-import { ChannelProvider } from '@/contexts/channel-context';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import { ThemeProvider } from 'next-themes';
 import { Toaster } from '@/components/ui/toaster';
-import { useChannelSocket } from '@/hooks/useChannelSocket';
-
-// Wrapper component to initialize channel socket events
-function ChannelSocketManager({ children }: { children: React.ReactNode }) {
-  useChannelSocket();
-  return <>{children}</>;
-}
+import { SocketProvider } from './socket-provider';
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
+      staleTime: 60 * 1000, // 1 minute
       refetchOnWindowFocus: false,
-      retry: 1
     },
   },
 });
@@ -25,16 +18,17 @@ const queryClient = new QueryClient({
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="light"
+        enableSystem={false}
+      >
         <SocketProvider>
-          <ChannelProvider>
-            <ChannelSocketManager>
-              {children}
-              <Toaster />
-            </ChannelSocketManager>
-          </ChannelProvider>
+          {children}
+          <Toaster />
         </SocketProvider>
-      </AuthProvider>
+      </ThemeProvider>
+      <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   );
 } 
