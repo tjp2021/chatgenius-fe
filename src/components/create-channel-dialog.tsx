@@ -133,7 +133,7 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
 
       console.log('Sending request with body:', requestBody);
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -12,7 +12,7 @@ export async function POST(
     }
 
     const token = await auth().getToken();
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels/${params.channelId}/join`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels/${params.channelId}/join`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,

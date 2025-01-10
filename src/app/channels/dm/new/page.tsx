@@ -24,7 +24,7 @@ export default function NewDirectMessagePage() {
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['users', search],
     queryFn: async () => {
-      const response = await api.get('/users/search', {
+      const response = await api.get('/api/users/search', {
         params: { query: search }
       });
       return response.data;
@@ -34,7 +34,7 @@ export default function NewDirectMessagePage() {
 
   const handleStartDM = async (userId: string) => {
     try {
-      const response = await api.post('/channels', {
+      const response = await api.post('/api/channels', {
         type: 'DM',
         userIds: [userId]
       });

@@ -16,15 +16,15 @@ export const API_ROUTES = {
   AUTH_TOKEN: '/api/auth/token',
   
   // Channels
-  CHANNELS: '/channels',
-  CHANNEL_MESSAGES: (channelId: string) => `/channels/${channelId}/messages`,
+  CHANNELS: '/api/channels',
+  CHANNEL_MESSAGES: (channelId: string) => `/api/channels/${channelId}/messages`,
   
   // Messages
-  MESSAGES: '/messages',
+  MESSAGES: '/api/messages',
   
   // Users
-  USERS: '/users',
-  USER_PRESENCE: '/users/presence'
+  USERS: '/api/users',
+  USER_PRESENCE: '/api/users/presence'
 } as const;
 
 // Socket Events (matching backend socket events)

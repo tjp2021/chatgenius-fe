@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     const { name, description, type, members } = body;
 
     // Make API call to your backend
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -47,7 +47,7 @@ export async function GET(req: Request) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels`, {
       headers: {
         'Authorization': `Bearer ${await auth().getToken()}`
       }

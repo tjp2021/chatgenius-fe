@@ -101,7 +101,7 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
         throw new Error('No authentication token available');
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels/${channelId}/leave?shouldDelete=false`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels/${channelId}/leave`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

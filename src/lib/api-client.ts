@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuth } from "@clerk/nextjs";
+import { SearchUsersResponse } from "@/types/user";
 
 class ApiClient {
   private static instance: ApiClient;
@@ -19,7 +20,7 @@ class ApiClient {
 
   async searchUsers(search: string, token: string, page: number = 1, limit: number = 10): Promise<SearchUsersResponse> {
     const response = await fetch(
-      `${this.baseUrl}/users/search?search=${search}&page=${page}&limit=${limit}`,
+      `${this.baseUrl}/api/users/search?search=${search}&page=${page}&limit=${limit}`,
       {
         headers: {
           'Authorization': `Bearer ${token}`,

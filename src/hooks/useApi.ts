@@ -42,7 +42,7 @@ export function useApi() {
 
   const getChannels = useCallback(async () => {
     try {
-      const response = await axiosInstance.get<APIResponse<Channel[]>>('/channels');
+      const response = await axiosInstance.get<APIResponse<Channel[]>>('/api/channels');
       console.log('API Response:', response.data); // Debug log
       return response.data;
     } catch (error) {
@@ -53,7 +53,7 @@ export function useApi() {
 
   const joinChannel = useCallback(async (channelId: string) => {
     try {
-      const response = await axiosInstance.post<ChannelMutationResponse>(`/channels/${channelId}/join`);
+      const response = await axiosInstance.post<ChannelMutationResponse>(`/api/channels/${channelId}/join`);
       return response.data;
     } catch (error) {
       console.error('Failed to join channel:', error);
@@ -64,7 +64,7 @@ export function useApi() {
   const leaveChannel = useCallback(async (channelId: string, shouldDelete: boolean = false) => {
     try {
       const response = await axiosInstance.post<ChannelLeaveResponse>(
-        `/channels/${channelId}/leave`,
+        `/api/channels/${channelId}/leave`,
         null,
         {
           params: { shouldDelete }
