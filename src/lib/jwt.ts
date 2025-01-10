@@ -1,4 +1,4 @@
-import { useAuth } from '@clerk/nextjs';
+import { /* useAuth */ } from '@clerk/nextjs';
 
 class JWTService {
   private tokenGetter: (() => Promise<string | null>) | null = null;

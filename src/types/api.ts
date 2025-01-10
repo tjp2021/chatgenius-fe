@@ -29,8 +29,15 @@ export const API_ROUTES = {
 
 // Socket Events (matching backend socket events)
 export enum SocketEvents {
-  MESSAGE_NEW = 'message:new',
+  /* MESSAGE_NEW = 'message:new',
   MESSAGE_SENT = 'message:sent',
   TYPING_START = 'typing:start',
-  TYPING_STOP = 'typing:stop'
+  TYPING_STOP = 'typing:stop' */
 } 
+
+export const MessageEvents = {
+  /* MESSAGE_NEW: 'message:new',
+  MESSAGE_SENT: 'message:sent',
+  TYPING_START: 'typing:start',
+  TYPING_STOP: 'typing:stop' */
+}; 

@@ -1,6 +1,6 @@
 import { useAuth } from '@clerk/nextjs';
 import { useEffect } from 'react';
-import { api, setAuthToken } from '@/lib/axios';
+import { setAuthToken } from '@/lib/axios';
 
 export function useClerkToken() {
   const { getToken } = useAuth();

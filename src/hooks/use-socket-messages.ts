@@ -21,6 +21,26 @@ interface SocketMessagesState {
   error: Error | null;
 }
 
+interface SocketMessageEvents {
+  /* message: (message: Message) => void;
+  messageDelivered: (messageId: string) => void;
+  messageRead: (messageId: string) => void;
+  userTypingStart: (userId: string) => void;
+  userTypingStop: (userId: string) => void; */
+}
+
+/* const onNewMessage = (callback: (message: Message) => void) => {
+  // Implementation
+};
+
+const onMessageDelivered = (callback: (messageId: string) => void) => {
+  // Implementation
+};
+
+const onMessageRead = (callback: (messageId: string) => void) => {
+  // Implementation
+}; */
+
 export function useSocketMessages({
   channelId,
   onNewMessage,

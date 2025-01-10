@@ -3,30 +3,31 @@ type LogDetails = Record<string, any>;
 export const socketLogger = {
   connect: (id: string | undefined) => {
     if (!id) {
-      console.log('✨ [SOCKET] Connected without ID');
       return;
     }
-    console.log('✨ [SOCKET] Connected! ID:', id);
   },
   
   error: (error: Error, details?: LogDetails) => {
-    console.error('❌ [SOCKET] Error:', error.message);
     if (details) {
-      Object.entries(details).forEach(([key, value]) => 
-        console.error(`🔍 [SOCKET] ${key}:`, value)
-      );
+      Object.entries(details).forEach(([/* key */, /* value */]) => {
+        // Handle details
+      });
     }
   },
   
-  disconnect: (reason: string) => 
-    console.log('💔 [SOCKET] Disconnected:', reason),
+  disconnect: (/* reason */: string) => {
+    // Handle disconnect
+  },
   
-  debug: (message: string, ...args: any[]) => 
-    console.log(`🔧 [SOCKET] ${message}`, ...args),
+  debug: (/* message */: string, /* ...args */: any[]) => {
+    // Handle debug
+  },
   
-  warn: (message: string, ...args: any[]) => 
-    console.warn(`⚠️ [SOCKET] ${message}`, ...args),
+  warn: (/* message */: string, /* ...args */: any[]) => {
+    // Handle warn
+  },
   
-  info: (message: string, ...args: any[]) => 
-    console.info(`ℹ️ [SOCKET] ${message}`, ...args)
+  info: (/* message */: string, /* ...args */: any[]) => {
+    // Handle info
+  }
 }; 

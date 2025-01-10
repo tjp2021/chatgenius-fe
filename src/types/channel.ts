@@ -1,4 +1,4 @@
-import type { User } from '@/types/user';
+import { /* User */ } from './user';
 
 export type ChannelType = 'PUBLIC' | 'PRIVATE' | 'DM';
 

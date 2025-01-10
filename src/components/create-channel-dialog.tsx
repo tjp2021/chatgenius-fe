@@ -1,8 +1,7 @@
 'use client';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { UserPicker } from "./user-picker";
+import { Tabs, /* TabsContent, */ TabsList, TabsTrigger } from "./ui/tabs";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
@@ -165,7 +164,7 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
       form.reset();
       
       // Then emit socket event for real-time updates
-      if (socket?.connected) {
+      if (socket?.isConnected) {
         socket.emit('channel:created', { channel });
       }
       
@@ -215,7 +214,7 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
 
         <Tabs 
           value={activeTab} 
-          onValueChange={(value: 'public' | 'private' | 'dm') => setActiveTab(value)} 
+          onValueChange={(value) => setActiveTab(value as 'public' | 'private' | 'dm')} 
           className="w-full"
         >
           <TabsList className="grid w-full grid-cols-3">

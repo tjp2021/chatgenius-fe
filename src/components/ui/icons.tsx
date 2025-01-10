@@ -8,7 +8,7 @@ import {
   Edit,
   Plus,
   Send,
-  type LucideIcon
+  /* type LucideIcon */
 } from 'lucide-react';
 
 export const Icons = {

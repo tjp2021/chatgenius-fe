@@ -39,13 +39,13 @@ export interface MessagePayload {
 }
 
 export enum MessageEvent {
-  SEND = 'message:send',
+  /* SEND = 'message:send',
   SENT = 'message:sent',
   NEW = 'message:new',
   DELIVERED = 'message:delivered',
   READ = 'message:read',
-  TYPING_START = 'message:typing:start',
-  TYPING_STOP = 'message:typing:stop'
+  TYPING_START = 'typing:start',
+  TYPING_STOP = 'typing:stop' */
 }
 
 export interface MessageResponse {

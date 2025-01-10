@@ -1,5 +1,5 @@
 import { io, Socket } from 'socket.io-client';
-import { Message, MessageEvent } from '@/types/message';
+import { /* Message, */ MessageEvent } from '@/types/message';
 import { socketLogger } from './socket-logger';
 
 interface SocketConfig {
@@ -21,6 +21,18 @@ interface SocketResponse<T> {
   success: boolean;
   data?: T;
   error?: string;
+}
+
+interface SocketErrorResponse {
+  /* error: string; */
+}
+
+interface SocketDisconnectResponse {
+  /* error: string; */
+}
+
+interface SocketReconnectResponse {
+  /* reason: string; */
 }
 
 export class ChatSocketClient {
@@ -131,6 +143,14 @@ export class ChatSocketClient {
     this.socket.on('error', (error: Error) => {
       socketLogger.error(error, { socketId: this.socket.id });
       this.config.onConnectionError?.(error);
+    });
+
+    this.socket.on('message:delivered', (/* data */) => {
+      // Handle message delivered
+    });
+
+    this.socket.on('message:read', (/* data */) => {
+      // Handle message read
     });
   }
 

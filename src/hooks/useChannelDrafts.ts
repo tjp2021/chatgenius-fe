@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { /* useState, */ useCallback, useEffect } from 'react';
 import { useLocalStorage } from './use-local-storage';
 
 interface ChannelDraft {
@@ -19,6 +19,14 @@ interface UseChannelDrafts {
 const DRAFT_STORAGE_KEY = 'channel_drafts';
 const MAX_DRAFT_AGE_DAYS = 7;
 const MAX_DRAFT_SIZE = 10000; // 10KB limit
+
+interface DraftActions {
+  /* channelId: string;
+  content: string;
+  channelId: string;
+  content: string;
+  channelId: string; */
+}
 
 export function useChannelDrafts(): UseChannelDrafts {
   const [drafts, setDrafts] = useLocalStorage<ChannelDraft[]>(DRAFT_STORAGE_KEY, []);

@@ -46,6 +46,12 @@ export function useWelcomePage(): UseWelcomePageReturn {
     }
   }, [channelGroups, hasNoChannels, isLoading, router]);
 
+  useEffect(() => {
+    if (error) {
+      // Handle error
+    }
+  }, [error]);
+
   return {
     shouldShowWelcome: hasNoChannels,
     isLoading,

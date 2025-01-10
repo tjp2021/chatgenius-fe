@@ -11,7 +11,7 @@ export function useSocket() {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  /* const [reconnectAttempts, setReconnectAttempts] = useState(0); */
 
   const MAX_RECONNECT_ATTEMPTS = 5;
   const RECONNECT_INTERVAL = 5000;
@@ -29,14 +29,12 @@ export function useSocket() {
     socketLogger.error(error, { type: 'connection' });
     setError(error);
     setIsConnected(false);
-    setReconnectAttempts(prev => prev + 1);
   }, []);
 
   const handleReconnect = useCallback(() => {
     socketLogger.info('Reconnected successfully');
     setError(null);
     setIsConnected(true);
-    setReconnectAttempts(0);
   }, []);
 
   const handleDisconnect = useCallback((reason: string) => {

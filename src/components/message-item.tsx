@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils';
 import type { Message } from '@/types';
 
 interface MessageItemProps {
+  /* messageId: string; */
+  content: string;
   message: Message;
   onRetry?: (messageId: string) => void;
 }

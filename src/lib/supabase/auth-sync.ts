@@ -1,6 +1,51 @@
 import { createServerSupabaseClient } from './server';
 import { clerkClient } from '@clerk/nextjs';
 
+export const handleAuth = async (event: any) => {
+  // console.log('Handling auth event:', event);
+  
+  if (!event?.type) {
+    // console.log('No event type provided');
+    return;
+  }
+
+  try {
+    // console.log('Processing event type:', event.type);
+    
+    switch (event.type) {
+      case 'user.created':
+        // console.log('User created event received');
+        break;
+        
+      case 'user.deleted':
+        // console.log('User deleted event received');
+        break;
+        
+      default:
+        // console.log('Unhandled event type:', event.type);
+        break;
+    }
+  } catch (error) {
+    // console.error('Error handling auth event:', error);
+  }
+};
+
+export const syncUserWithSupabase = async (/* user */: any) => {
+  try {
+    // Handle sync logic
+  } catch (error) {
+    // Handle error
+  }
+};
+
+export const deleteUserFromSupabase = async (/* userId */: string) => {
+  try {
+    // Handle delete logic
+  } catch (error) {
+    // Handle error
+  }
+};
+
 export const syncUserToSupabase = async (clerkUserId: string) => {
   console.log('🔵 [Supabase Sync] Starting user sync:', { clerkUserId });
   

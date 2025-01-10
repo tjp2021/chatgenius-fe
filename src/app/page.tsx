@@ -1,12 +1,12 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useAuth, SignInButton, SignUpButton } from '@clerk/nextjs';
+// import { useRouter } from 'next/navigation';
+import { /* useAuth, */ SignInButton, SignUpButton } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
 
 export default function Home() {
-  const router = useRouter();
-  const { isSignedIn } = useAuth();
+  // const router = useRouter();
+  // const { isSignedIn } = useAuth();
 
   return (
     <div className="min-h-screen flex flex-col">

@@ -5,17 +5,17 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface User {
+/* interface User {
   id: string;
   name: string;
   email: string;
   avatar?: string;
-}
+} */
 
 interface UserPickerProps {
+  /* users: User[]; */
+  onSelect: (userId: string) => void;
   selectedUsers: string[];
-  onSelectionChange: (users: string[]) => void;
-  maxUsers?: number;
 }
 
 // This is a mock function - replace with actual user fetching logic
@@ -31,19 +31,17 @@ const useUsers = () => {
   };
 };
 
-export const UserPicker = ({ 
-  selectedUsers, 
-  onSelectionChange,
-  maxUsers = 50 
-}: UserPickerProps) => {
-  const [open, setOpen] = useState(false);
+export function UserPicker({ onSelect, selectedUsers }: UserPickerProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  /* const [open, setOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false); */
   const { users, isLoading } = useUsers();
 
   const toggleUser = (userId: string) => {
     if (selectedUsers.includes(userId)) {
-      onSelectionChange(selectedUsers.filter(id => id !== userId));
-    } else if (selectedUsers.length < maxUsers) {
-      onSelectionChange([...selectedUsers, userId]);
+      onSelect(userId);
+    } else if (selectedUsers.length < 50) {
+      onSelect(userId);
     }
   };
 
@@ -78,4 +76,4 @@ export const UserPicker = ({
       </CommandGroup>
     </Command>
   );
-}; 
+} 

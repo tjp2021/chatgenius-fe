@@ -16,6 +16,13 @@ interface MutationContext {
   previousChannels: Channel[] | undefined;
 }
 
+interface ChannelActions {
+  /* channelId: string;
+  type: string;
+  channelId: string;
+  channelId: string; */
+}
+
 export function useChannels() {
   const queryClient = useQueryClient();
   const { socket } = useSocket();
@@ -99,7 +106,7 @@ export function useChannels() {
       queryClient.invalidateQueries({ queryKey: ['channels'] });
 
       // Emit the join event
-      if (socket?.connected) {
+      if (socket?.isConnected) {
         socket.emit('channel:join', { channelId });
       }
     }

@@ -1,4 +1,4 @@
-import { ChannelList } from './channel-list';
+import { /* ChannelList */ } from './channel-list';
 
 export const Sidebar = () => {
   return (

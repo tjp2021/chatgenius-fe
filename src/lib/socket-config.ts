@@ -1,22 +1,12 @@
 import { default as socketIOClient } from 'socket.io-client';
 import { socketLogger } from './socket-logger';
+import { /* SocketConfig */ } from '@/types';
 
-interface SocketConfig {
-  url: string;
-  path: string;
-  auth: {
-    token: string;
-    userId: string;
-  };
-  options: {
-    transports: string[];
-    autoConnect: boolean;
-    reconnection: boolean;
-    reconnectionAttempts: number;
-    reconnectionDelay: number;
-    timeout: number;
-  };
-}
+// Unused interface
+// interface SocketConfig {
+//   url: string;
+//   path: string;
+// }
 
 export const createSocket = (token: string, userId: string) => {
   const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;

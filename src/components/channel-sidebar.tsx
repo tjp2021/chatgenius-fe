@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Channel, ChannelType } from '@/types/channel';
-import { cn } from '@/lib/utils';
+import { Channel, /* ChannelType */ } from '@/types/channel';
+import { /* cn */ } from '@/lib/utils';
 import { useUser } from "@clerk/nextjs";
-import { ChevronDown, ChevronRight, Hash, Lock, MessageSquare, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, Hash, Lock, MessageSquare, /* Plus */ } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { BrowseChannelsModal } from '@/components/browse-channels-modal';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -18,12 +18,6 @@ interface ChannelGroups {
   public: Channel[];
   private: Channel[];
   dms: Channel[];
-}
-
-interface ChannelCount {
-  members: number;
-  messages: number;
-  lastViewedMessageCount?: number;
 }
 
 export function ChannelSidebar() {

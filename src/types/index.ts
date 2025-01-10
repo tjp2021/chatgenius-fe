@@ -25,12 +25,12 @@ export interface MessageThread {
 }
 
 export enum MessageEvent {
-  SEND = 'message:send',
+  /* SEND = 'message:send',
   NEW = 'message:new',
   DELIVERED = 'message:delivered',
   FAILED = 'message:failed',
-  TYPING_START = 'message:typing:start',
-  TYPING_STOP = 'message:typing:stop'
+  TYPING_START = 'typing:start',
+  TYPING_STOP = 'typing:stop' */
 }
 
 export interface TypingIndicator {

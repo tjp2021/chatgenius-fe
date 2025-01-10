@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import { /* React, useCallback */ } from 'react';
 import { useChannelContext } from '../contexts/channel-context';
 import { useToast } from '../components/ui/use-toast';
 import { Channel } from '../types/channel';
@@ -7,7 +7,7 @@ const ChannelItem = ({ channel }: { channel: Channel }) => {
   const { leaveChannel } = useChannelContext();
   const { toast } = useToast();
 
-  const handleLeave = async () => {
+  /* const handleLeave = async () => {
     try {
       await leaveChannel(channel.id);
       toast({
@@ -21,7 +21,7 @@ const ChannelItem = ({ channel }: { channel: Channel }) => {
         variant: "destructive",
       });
     }
-  };
+  }; */
 
   // ... rest of component
 };

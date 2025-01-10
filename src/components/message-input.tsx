@@ -9,6 +9,7 @@ import { TypingIndicatorDisplay } from './typing-indicator';
 
 interface MessageInputProps {
   channelId: string;
+  /* content: string; */
   onSend: (content: string) => void;
 }
 

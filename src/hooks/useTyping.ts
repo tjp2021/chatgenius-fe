@@ -83,9 +83,12 @@ export function useTyping(channelId: string) {
   }, [socket, channelId]);
 
   // Handle text input
-  const handleTyping = useCallback(() => {
-    sendTypingStart();
-  }, [sendTypingStart]);
+  const handleTyping = useCallback((callback: () => void) => {
+    if (!isTyping && isTypingEnabled) {
+      setIsTyping(true);
+      callback();
+    }
+  }, [isTyping, isTypingEnabled, setIsTyping]);
 
   // Handle message send (clear typing indicator)
   const handleMessageSent = useCallback(() => {
