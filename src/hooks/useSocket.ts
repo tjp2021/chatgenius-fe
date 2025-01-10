@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { ChatSocketClient } from '@/lib/socket-client';
+import { socketLogger } from '@/lib/socket-logger';
 
 export function useSocket() {
   const socketRef = useRef<ChatSocketClient>();
@@ -16,65 +17,139 @@ export function useSocket() {
   const RECONNECT_INTERVAL = 5000;
   const CONNECTION_TIMEOUT = 10000;
 
-  useEffect(() => {
-    const initSocket = async () => {
-      try {
-        setIsConnecting(true);
-        setError(null);
-
-        const token = await getToken();
-        if (!token || !userId) {
-          throw new Error('Authentication not ready');
-        }
-
-        await cleanupExistingSocket();
-
-        const socketUrl = new URL(process.env.NEXT_PUBLIC_SOCKET_URL || 'ws://localhost:3001');
-        console.log('[Socket] Initializing connection to:', socketUrl.toString());
-
-        socketRef.current = new ChatSocketClient({
-          url: socketUrl.toString(),
-          token,
-          userId,
-          timeout: CONNECTION_TIMEOUT,
-          reconnectOptions: {
-            maxAttempts: MAX_RECONNECT_ATTEMPTS,
-            interval: RECONNECT_INTERVAL
-          },
-          onAuthError: handleAuthError,
-          onConnectionError: handleConnectionError,
-          onReconnect: handleReconnect,
-          onDisconnect: handleDisconnect
-        });
-
-        await establishInitialConnection();
-      } catch (err) {
-        handleInitializationError(err);
-      } finally {
-        setIsConnecting(false);
-      }
-    };
-
+  const handleAuthError = useCallback((error: Error) => {
+    socketLogger.error(error, { type: 'auth' });
+    setError(error);
+    setIsConnected(false);
+    // Trigger token refresh and reconnection
     initSocket();
+  }, []);
 
-    return () => {
-      if (socketRef.current) {
-        console.log('[Socket] Cleaning up socket connection');
-        socketRef.current.disconnect();
-        socketRef.current = undefined;
-        setIsConnected(false);
-        setError(null);
+  const handleConnectionError = useCallback((error: Error) => {
+    socketLogger.error(error, { type: 'connection' });
+    setError(error);
+    setIsConnected(false);
+    setReconnectAttempts(prev => prev + 1);
+  }, []);
+
+  const handleReconnect = useCallback(() => {
+    socketLogger.info('Reconnected successfully');
+    setError(null);
+    setIsConnected(true);
+    setReconnectAttempts(0);
+  }, []);
+
+  const handleDisconnect = useCallback((reason: string) => {
+    socketLogger.warn(`Disconnected: ${reason}`);
+    setIsConnected(false);
+    if (reason === 'io server disconnect') {
+      // Server initiated disconnect, attempt reconnect
+      initSocket();
+    }
+  }, []);
+
+  const establishInitialConnection = useCallback(async () => {
+    if (!socketRef.current) {
+      throw new Error('Socket not initialized');
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Connection timeout'));
+      }, CONNECTION_TIMEOUT);
+
+      const checkConnection = () => {
+        if (socketRef.current?.isConnected) {
+          clearTimeout(timeout);
+          setIsConnected(true);
+          resolve();
+        } else if (!socketRef.current) {
+          clearTimeout(timeout);
+          reject(new Error('Socket initialization failed'));
+        } else {
+          setTimeout(checkConnection, 100);
+        }
+      };
+
+      checkConnection();
+    });
+  }, []);
+
+  const handleInitializationError = useCallback((err: unknown) => {
+    const error = err instanceof Error ? err : new Error('Socket initialization failed');
+    socketLogger.error(error, { phase: 'initialization' });
+    setError(error);
+    setIsConnected(false);
+  }, []);
+
+  const getSocketUrl = useCallback((url: string) => {
+    try {
+      const parsedUrl = new URL(url);
+      // Force WebSocket protocol
+      return parsedUrl.protocol === 'https:' 
+        ? `wss://${parsedUrl.host}` 
+        : `ws://${parsedUrl.host}`;
+    } catch (error) {
+      throw new Error(`Invalid socket URL: ${url}`);
+    }
+  }, []);
+
+  const initSocket = useCallback(async () => {
+    try {
+      setIsConnecting(true);
+      setError(null);
+
+      const token = await getToken();
+      if (!token || !userId) {
+        throw new Error('Authentication not ready');
       }
-    };
-  }, [userId]);
 
-  const cleanupExistingSocket = async () => {
+      await cleanupExistingSocket();
+
+      const rawUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'ws://localhost:3001';
+      const socketUrl = getSocketUrl(rawUrl);
+      socketLogger.debug('Initializing connection to:', socketUrl);
+
+      socketRef.current = new ChatSocketClient({
+        url: socketUrl,
+        token,
+        userId,
+        timeout: CONNECTION_TIMEOUT,
+        reconnectOptions: {
+          maxAttempts: MAX_RECONNECT_ATTEMPTS,
+          interval: RECONNECT_INTERVAL
+        },
+        onAuthError: handleAuthError,
+        onConnectionError: handleConnectionError,
+        onReconnect: handleReconnect,
+        onDisconnect: handleDisconnect
+      });
+
+      await establishInitialConnection();
+    } catch (err) {
+      handleInitializationError(err);
+    } finally {
+      setIsConnecting(false);
+    }
+  }, [userId, getToken, handleAuthError, handleConnectionError, handleReconnect, handleDisconnect, establishInitialConnection, handleInitializationError, getSocketUrl]);
+
+  const cleanupExistingSocket = useCallback(async () => {
     if (socketRef.current) {
-      console.log('[Socket] Cleaning up existing connection');
+      socketLogger.debug('Cleaning up existing connection');
       await socketRef.current.disconnect();
       socketRef.current = undefined;
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    initSocket();
+
+    return () => {
+      cleanupExistingSocket();
+      setIsConnected(false);
+      setError(null);
+    };
+  }, [userId, initSocket, cleanupExistingSocket]);
 
   const sendMessage = useCallback(async (channelId: string, content: string) => {
     if (!socketRef.current?.isConnected) {
