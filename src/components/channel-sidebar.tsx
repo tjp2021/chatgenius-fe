@@ -12,7 +12,6 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/compone
 import { Button } from '@/components/ui/button';
 import { useChannelContext } from '@/contexts/channel-context';
 import { CreateChannelDialog } from '@/components/create-channel-dialog';
-import { useDMDetails } from '@/hooks/useDMDetails';
 
 interface ChannelGroups {
   public: Channel[];
