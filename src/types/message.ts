@@ -1,21 +1,64 @@
 import type { User } from '@/types/user';
 
-export type MessageDeliveryStatus = 'SENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
+export const MessageDeliveryStatus = {
+  SENDING: 'SENDING',
+  SENT: 'SENT',
+  DELIVERED: 'DELIVERED',
+  READ: 'READ',
+  FAILED: 'FAILED'
+} as const;
+
+export type MessageDeliveryStatusType = typeof MessageDeliveryStatus[keyof typeof MessageDeliveryStatus];
+
+export interface ReadReceipt {
+  userId: string;
+  readAt: string;
+}
 
 export interface Message {
-  id: string;
+  id?: string;
+  tempId?: string;
   content: string;
   channelId: string;
   userId: string;
-  createdAt: Date;
-  updatedAt: Date;
-  deliveryStatus: MessageDeliveryStatus;
-  user: User;
+  createdAt: string;
+  updatedAt?: string;
+  deliveryStatus: MessageDeliveryStatusType;
+  user?: User;
   parentId?: string;
+  readBy?: ReadReceipt[];
+  error?: string;
+}
+
+export interface MessagePayload {
+  content: string;
+  channelId: string;
+  userId: string;
+  tempId: string;
+  parentId?: string;
+}
+
+export enum MessageEvent {
+  SEND = 'message:send',
+  SENT = 'message:sent',
+  NEW = 'message:new',
+  DELIVERED = 'message:delivered',
+  READ = 'message:read'
 }
 
 export interface MessageResponse {
   success: boolean;
   data?: Message;
   error?: string;
+}
+
+export interface MessageDeliveredPayload {
+  messageId: string;
+  channelId: string;
+}
+
+export interface MessageReadPayload {
+  messageId: string;
+  channelId: string;
+  readAt: string;
 } 

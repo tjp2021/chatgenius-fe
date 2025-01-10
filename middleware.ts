@@ -4,13 +4,15 @@ export default authMiddleware({
   // Public routes that don't require authentication
   publicRoutes: ["/", "/sign-in", "/sign-up"],
   
-  // After sign in, redirect to /channels
-  afterSignInUrl: "/channels",
-  
   // If not signed in and trying to access protected route, redirect to sign-in
-  afterSignOutUrl: "/",
+  ignoredRoutes: ["/api/trpc"],
 });
 
 export const config = {
-  matcher: ['/((?!.+\\.[\\w]+$|_next).*)', '/', '/(api|trpc)(.*)'],
+  matcher: [
+    // Match all API routes
+    '/api/:path*',
+    // Match all pages except public ones
+    '/((?!.+\\.[\\w]+$|_next|sign-in|sign-up|favicon.ico).*)',
+  ]
 };

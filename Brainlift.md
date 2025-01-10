@@ -913,3 +913,98 @@ Solution Walkthrough [CG-20240110-001]
   3. Match URL structure exactly with backend expectations
 
 ==================================================================
+
+Problem Analysis [CG-20240111-001]
+
+1. Initial Issues:
+   - Message rendering problems in the application
+   - 500 Internal Server Error with Clerk middleware
+   - 404 errors when fetching messages
+   - Middleware detection issues
+
+2. Root Causes:
+   - Middleware location issue: Initially placed in `src` directory instead of root
+   - Authentication token formatting inconsistencies between HTTP and WebSocket
+   - Incorrect API endpoint paths (missing `/api` prefix)
+   - Token validation issues in the backend
+
+Solution Attempts [CG-20240111-001]
+
+1. First Attempt: Frontend Debugging
+   - Checked frontend configurations
+   - Verified environment variables
+   - Enhanced logging for debugging
+   Result: Identified authentication-related issues
+
+2. Second Attempt: Middleware Relocation
+   - Moved middleware from `src` to root directory
+   - Updated middleware configuration
+   Result: Resolved middleware detection issue
+
+3. Third Attempt: Authentication Flow Fix
+   - Standardized token format (`Bearer ${token}`)
+   - Separated HTTP and WebSocket authentication
+   - Implemented proper error handling
+   Result: Improved authentication stability
+
+Final Solution [CG-20240111-001]
+
+1. Authentication Implementation:
+   ```typescript
+   // HTTP Requests
+   headers: {
+     'Authorization': `Bearer ${token}`,
+     'Content-Type': 'application/json'
+   }
+
+   // WebSocket Connection
+   auth: {
+     token: token  // Raw token without 'Bearer' prefix
+   }
+   ```
+
+2. Middleware Configuration:
+   ```typescript
+   // middleware.ts (in root directory)
+   export default authMiddleware({
+     publicRoutes: ["/", "/sign-in", "/sign-up"],
+     ignoredRoutes: ["/api/trpc"],
+   });
+   ```
+
+3. Error Handling:
+   - Implemented proper error responses
+   - Added logging for debugging
+   - Standardized error format across the application
+
+Lessons Learned [CG-20240111-001]
+
+1. Architecture:
+   - Keep middleware in the root directory for Next.js to detect it properly
+   - Maintain consistent API endpoint structure
+   - Use proper token formatting for different protocols
+
+2. Authentication:
+   - Different token formats needed for HTTP vs WebSocket
+   - Proper error handling for auth failures
+   - Clear separation of client and server auth code
+
+3. Debugging:
+   - Start with logging and environment variables
+   - Check middleware configuration early
+   - Verify token formats and API paths
+   - Use systematic debugging approach
+
+4. Best Practices:
+   - Maintain clear error logging
+   - Use TypeScript for better type safety
+   - Keep authentication logic centralized
+   - Follow proper middleware placement rules
+
+5. Prevention Strategies:
+   - Implement comprehensive logging
+   - Use TypeScript interfaces for API responses
+   - Add middleware location checks to CI/CD
+   - Maintain clear documentation of auth flows
+
+==================================================================

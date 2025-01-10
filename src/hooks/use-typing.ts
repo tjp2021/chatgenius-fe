@@ -1,38 +1,35 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback } from 'react';
 import { useSocket } from '@/providers/socket-provider';
-import { MessageEvent } from '@/types';
-import { FEATURES } from '@/config/features';
 
-export function useTyping(channelId: string) {
-  const { socket } = useSocket();
-  const typingTimeoutRef = useRef<NodeJS.Timeout>();
+const TYPING_EVENTS = {
+  START: 'typing:start',
+  STOP: 'typing:stop'
+} as const;
 
-  const sendTypingStart = useCallback(() => {
-    if (!socket || !FEATURES.ENABLE_REAL_TIME_FEATURES) return;
-    
-    socket.emit(MessageEvent.TYPING_START, { channelId });
-    
-    // Clear existing timeout
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
+export type TypingActions = {
+  startTyping: () => void;
+  stopTyping: () => void;
+  isTypingEnabled: boolean;
+};
 
-    // Set new timeout to stop typing indicator
-    typingTimeoutRef.current = setTimeout(() => {
-      socket.emit(MessageEvent.TYPING_STOP, { channelId });
-    }, 2000);
-  }, [socket, channelId]);
+export function useTyping(channelId: string): TypingActions {
+  const { socket, isConnected } = useSocket();
 
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-    };
-  }, []);
+  const startTyping = useCallback(() => {
+    if (!socket || !isConnected) return;
+    socket.emit(TYPING_EVENTS.START, { channelId });
+  }, [socket, channelId, isConnected]);
 
-  return { sendTypingStart };
+  const stopTyping = useCallback(() => {
+    if (!socket || !isConnected) return;
+    socket.emit(TYPING_EVENTS.STOP, { channelId });
+  }, [socket, channelId, isConnected]);
+
+  return {
+    startTyping,
+    stopTyping,
+    isTypingEnabled: Boolean(socket && isConnected)
+  };
 } 
