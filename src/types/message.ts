@@ -43,7 +43,9 @@ export enum MessageEvent {
   SENT = 'message:sent',
   NEW = 'message:new',
   DELIVERED = 'message:delivered',
-  READ = 'message:read'
+  READ = 'message:read',
+  TYPING_START = 'message:typing:start',
+  TYPING_STOP = 'message:typing:stop'
 }
 
 export interface MessageResponse {

@@ -1,27 +1,43 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useMessages } from '@/hooks/useMessages';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Icons } from '@/components/ui/icons';
-import { useTyping } from '@/hooks/use-typing';
+import { useSocketMessages } from '@/hooks/use-socket-messages';
+import { TypingIndicator } from '@/components/chat/typing-indicator';
+import { cn } from '@/lib/utils';
 
 interface MessageInputProps {
   channelId: string;
+  className?: string;
 }
 
-export function MessageInput({ channelId }: MessageInputProps) {
-  console.log('[Message Input] Initializing MessageInput component', { channelId });
+export function MessageInput({ channelId, className }: MessageInputProps) {
   const [content, setContent] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
-  const { sendMessage } = useMessages(channelId);
-  const { startTyping, stopTyping, isTypingEnabled } = useTyping(channelId);
+
+  const {
+    send: sendMessage,
+    startTyping,
+    stopTyping,
+    typingUsers,
+    isLoading,
+    error
+  } = useSocketMessages({
+    channelId,
+    onNewMessage: (message) => {
+      // Auto-focus input after receiving a message
+      if (message.channelId === channelId) {
+        textareaRef.current?.focus();
+      }
+    }
+  });
 
   const handleTyping = useCallback(() => {
-    if (!isTyping && isTypingEnabled) {
+    if (!isTyping) {
       setIsTyping(true);
       startTyping();
     }
@@ -34,11 +50,9 @@ export function MessageInput({ channelId }: MessageInputProps) {
     // Set new timeout
     typingTimeoutRef.current = setTimeout(() => {
       setIsTyping(false);
-      if (isTypingEnabled) {
-        stopTyping();
-      }
+      stopTyping();
     }, 2000);
-  }, [isTyping, startTyping, stopTyping, isTypingEnabled]);
+  }, [isTyping, startTyping, stopTyping]);
 
   // Cleanup on unmount or channel change
   useEffect(() => {
@@ -46,84 +60,84 @@ export function MessageInput({ channelId }: MessageInputProps) {
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
-      if (isTyping && isTypingEnabled) {
+      if (isTyping) {
         stopTyping();
       }
     };
-  }, [isTyping, stopTyping, isTypingEnabled]);
+  }, [isTyping, stopTyping]);
 
   const handleSubmit = async () => {
-    console.log('[Message Input] Handling message submit', { content, channelId });
-    if (!content.trim()) {
-      console.log('[Message Input] Empty content, skipping send');
-      return;
-    }
+    if (!content.trim()) return;
 
     try {
-      console.log('[Message Input] Attempting to send message');
       // Stop typing indicator before sending
-      if (isTyping && isTypingEnabled) {
-        console.log('[Message Input] Stopping typing indicator');
+      if (isTyping) {
         setIsTyping(false);
         stopTyping();
       }
 
       await sendMessage(content);
-      console.log('[Message Input] Message sent successfully');
       setContent('');
       textareaRef.current?.focus();
     } catch (error) {
-      console.error('[Message Input] Failed to send message:', error);
+      console.error('Failed to send message:', error);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
-      console.log('[Message Input] Enter key pressed, submitting message');
       e.preventDefault();
       handleSubmit();
     }
   };
 
   return (
-    <form 
-      onSubmit={(e) => {
-        console.log('[Message Input] Form submit triggered');
-        e.preventDefault();
-        handleSubmit();
-      }} 
-      className="flex gap-2 p-4 border-t"
-    >
-      <Textarea
-        ref={textareaRef}
-        value={content}
-        onChange={(e) => {
-          const newContent = e.target.value;
-          console.log('[Message Input] Content changed', { newContent });
-          setContent(newContent);
-          if (newContent.trim()) {
-            handleTyping();
-          } else if (isTyping && isTypingEnabled) {
-            setIsTyping(false);
-            stopTyping();
-          }
-        }}
-        onKeyDown={handleKeyDown}
-        onBlur={() => {
-          if (isTyping && isTypingEnabled) {
-            setIsTyping(false);
-            stopTyping();
-          }
-        }}
-        placeholder="Type a message..."
-        className="min-h-[60px] resize-none"
+    <div className={cn("space-y-2", className)}>
+      <TypingIndicator 
+        userIds={typingUsers} 
+        className="px-4"
       />
-      <Button 
-        type="submit" 
-        disabled={!content.trim()}
+      <form 
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleSubmit();
+        }} 
+        className="flex gap-2 p-4 border-t"
       >
-        <Icons.send className="h-4 w-4" />
-      </Button>
-    </form>
+        <Textarea
+          ref={textareaRef}
+          value={content}
+          onChange={(e) => {
+            const newContent = e.target.value;
+            setContent(newContent);
+            if (newContent.trim()) {
+              handleTyping();
+            } else if (isTyping) {
+              setIsTyping(false);
+              stopTyping();
+            }
+          }}
+          onKeyDown={handleKeyDown}
+          onBlur={() => {
+            if (isTyping) {
+              setIsTyping(false);
+              stopTyping();
+            }
+          }}
+          placeholder="Type a message..."
+          className="min-h-[60px] resize-none"
+          disabled={isLoading}
+          aria-invalid={error ? 'true' : 'false'}
+          aria-errormessage={error?.message}
+        />
+        <Button 
+          type="submit" 
+          disabled={!content.trim() || isLoading}
+          aria-label="Send message"
+        >
+          <Icons.send className="h-4 w-4" />
+        </Button>
+      </form>
+    </div>
   );
 } 

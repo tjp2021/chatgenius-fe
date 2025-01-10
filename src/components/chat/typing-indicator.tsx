@@ -1,32 +1,48 @@
-import { useTypingIndicator } from '@/hooks/useTypingIndicator';
+'use client';
+
+import { useEffect, useState } from 'react';
+import { cn } from '@/lib/utils';
 
 interface TypingIndicatorProps {
-  channelId: string;
+  userIds: string[];
+  className?: string;
 }
 
-export function TypingIndicator({ channelId }: TypingIndicatorProps) {
-  const { typingUsers } = useTypingIndicator(channelId);
+export const TypingIndicator = ({
+  userIds,
+  className
+}: TypingIndicatorProps) => {
+  const [dots, setDots] = useState('');
 
-  if (typingUsers.length === 0) return null;
+  // Animate the dots
+  useEffect(() => {
+    if (userIds.length === 0) return;
 
-  const formatTypingText = () => {
-    if (typingUsers.length === 1) {
-      return `${typingUsers[0].user.name} is typing...`;
-    } else if (typingUsers.length === 2) {
-      return `${typingUsers[0].user.name} and ${typingUsers[1].user.name} are typing...`;
-    } else {
-      return `${typingUsers[0].user.name} and ${typingUsers.length - 1} others are typing...`;
-    }
-  };
+    const interval = setInterval(() => {
+      setDots(prev => {
+        if (prev.length >= 3) return '';
+        return prev + '.';
+      });
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [userIds.length]);
+
+  if (userIds.length === 0) return null;
 
   return (
-    <div className="flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
-      <div className="flex gap-1">
-        <span className="block w-1 h-1 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '0ms' }} />
-        <span className="block w-1 h-1 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '150ms' }} />
-        <span className="block w-1 h-1 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '300ms' }} />
-      </div>
-      <span>{formatTypingText()}</span>
+    <div 
+      className={cn(
+        "text-sm text-muted-foreground animate-pulse",
+        className
+      )}
+      aria-live="polite"
+    >
+      {userIds.length === 1 ? (
+        <span>Someone is typing{dots}</span>
+      ) : (
+        <span>{userIds.length} people are typing{dots}</span>
+      )}
     </div>
   );
-} 
+}; 
