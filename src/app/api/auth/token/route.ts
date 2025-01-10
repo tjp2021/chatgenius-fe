@@ -1,6 +1,9 @@
 import { auth } from '@clerk/nextjs';
 import { NextResponse } from 'next/server';
 
+// New route segment config
+export const runtime = 'edge';
+
 export async function GET() {
   try {
     const { getToken } = auth();
