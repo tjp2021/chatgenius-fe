@@ -5,3 +5,18 @@ export interface User {
   username: string;
   imageUrl?: string;
 } 
+
+export interface SearchUsersResponse {
+  users: {
+    id: string;
+    name: string | null;
+    imageUrl: string | null;
+    isOnline: boolean;
+  }[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    hasMore: boolean;
+  };
+} 

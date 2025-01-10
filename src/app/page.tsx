@@ -1,26 +1,21 @@
-import { SignInButton, SignUpButton } from '@clerk/nextjs';
+'use client';
 
-export default function LandingPage() {
+import { useRouter } from 'next/navigation';
+import { useAuth, SignInButton, SignUpButton } from '@clerk/nextjs';
+import { Button } from '@/components/ui/button';
+
+export default function Home() {
+  const router = useRouter();
+  const { isSignedIn } = useAuth();
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Navigation */}
       <nav className="flex justify-between items-center px-6 py-4">
         <div className="text-2xl font-bold text-[#1B4332]">ChatGenius</div>
         <div className="flex gap-4">
-          <SignInButton afterSignInUrl="/channels">
-            <button 
-              className="text-black hover:text-[#1B4332] font-medium cursor-pointer"
-            >
-              Sign in
-            </button>
-          </SignInButton>
-          <SignUpButton afterSignUpUrl="/channels">
-            <button 
-              className="bg-[#1B4332] text-white px-4 py-2 rounded-lg hover:bg-[#2D6A4F] transition-colors cursor-pointer"
-            >
-              Sign up
-            </button>
-          </SignUpButton>
+          <SignInButton afterSignInUrl="/channels" />
+          <SignUpButton afterSignUpUrl="/channels" />
         </div>
       </nav>
 
@@ -43,12 +38,8 @@ export default function LandingPage() {
         </p>
 
         <div className="flex justify-center mb-8">
-          <SignUpButton afterSignUpUrl="/channels">
-            <button 
-              className="bg-[#1B4332] text-white px-8 py-4 rounded-lg hover:bg-[#2D6A4F] transition-colors font-medium cursor-pointer"
-            >
-              Get Started
-            </button>
+          <SignUpButton afterSignInUrl="/channels">
+            <Button>Get Started</Button>
           </SignUpButton>
         </div>
 

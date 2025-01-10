@@ -66,19 +66,22 @@ export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalP
   }, [joinChannel, router, onOpenChange, toast, refreshChannels]);
 
   const handleLeaveChannel = useCallback(async (channel: Channel) => {
-    // If user is the owner, show delete confirmation
-    if (channel.ownerId === user?.id) {
+    // Keep owner check for private channels
+    if (channel.type === 'PRIVATE' && channel.ownerId === user?.id) {
       setChannelToDelete(channel);
       return;
     }
 
     try {
       await api.leaveChannel(channel.id, false);
-      // Invalidate channels query to refresh the list
-      await queryClient.invalidateQueries({ queryKey: ['channels'] });
+      
+      // Refresh channels immediately
+      await refreshChannels();
+      
+      // Close modal and redirect only after refresh
       onOpenChange(false);
       router.push('/channels');
-      await refreshChannels();
+      
       toast({
         title: 'Left channel successfully',
         duration: 3000
@@ -90,7 +93,7 @@ export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalP
         duration: 3000
       });
     }
-  }, [api, router, toast, user?.id, onOpenChange, queryClient, refreshChannels]);
+  }, [api, router, toast, refreshChannels, user?.id]);
 
   const handleDeleteChannel = useCallback(async () => {
     if (!channelToDelete) return;

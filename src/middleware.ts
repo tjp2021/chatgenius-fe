@@ -1,18 +1,16 @@
 import { authMiddleware } from "@clerk/nextjs";
 
 export default authMiddleware({
-  publicRoutes: ["/"],
-  // Make sure API routes are matched
-  ignoredRoutes: [
-    "/api/socket/io",
-    // Add other public routes here
-  ]
+  // Public routes that don't require authentication
+  publicRoutes: ["/", "/sign-in", "/sign-up"],
+  
+  // After sign in, redirect to /channels
+  afterSignInUrl: "/channels",
+  
+  // If not signed in and trying to access protected route, redirect to sign-in
+  afterSignOutUrl: "/",
 });
 
 export const config = {
-  matcher: [
-    // Match all paths except static files and socket.io
-    "/((?!.*\\..*|_next).*)",
-    "/(api|trpc)(.*)"
-  ],
+  matcher: ['/((?!.+\\.[\\w]+$|_next).*)', '/', '/(api|trpc)(.*)'],
 };

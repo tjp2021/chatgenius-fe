@@ -15,6 +15,7 @@ import { useChannelContext } from "@/contexts/channel-context";
 import { useRouter } from "next/navigation";
 import { useToast } from "./ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { UserSearch } from './user-search';
 
 const channelSchema = z.object({
   name: z.string().min(3).max(50),
@@ -36,6 +37,7 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
   const { toast } = useToast();
   const { getToken } = useAuth();
   const { refreshChannels } = useChannelContext();
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   
   const form = useForm<ChannelFormData>({
     resolver: zodResolver(channelSchema),
@@ -113,6 +115,11 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
   // Hide name/description fields for DM tab
   const showNameDescription = activeTab !== "dm";
 
+  const handleAddMember = (userId: string) => {
+    const currentMembers = form.getValues("members") || [];
+    form.setValue("members", [...currentMembers, userId]);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[525px]">
@@ -175,10 +182,10 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
                     <FormItem>
                       <FormLabel>{activeTab === "dm" ? "Select Users" : "Add Members"}</FormLabel>
                       <FormControl>
-                        <UserPicker 
+                        <UserSearch 
+                          onSelect={handleAddMember}
                           selectedUsers={field.value || []}
-                          onSelectionChange={(users) => field.onChange(users)}
-                          maxUsers={activeTab === "dm" ? 8 : undefined}
+                          placeholder={activeTab === "dm" ? "Search users to message..." : "Search users to add..."}
                         />
                       </FormControl>
                       <FormMessage />
