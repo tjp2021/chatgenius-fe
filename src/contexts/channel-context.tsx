@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback } from 'react';
 import { Channel } from '@/types/channel';
+import { useAuth } from '@clerk/nextjs';
 
 interface ChannelContextType {
   channels: Channel[];
@@ -21,11 +22,19 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
   const [channels, setChannels] = useState<Channel[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const { getToken } = useAuth();
 
   const refreshChannels = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/api/channels');
+      const token = await getToken();
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
       if (!response.ok) {
         throw new Error('Failed to fetch channels');
       }
@@ -36,7 +45,7 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [getToken]);
 
   return (
     <ChannelContext.Provider value={{ channels, isLoading, error, refreshChannels }}>

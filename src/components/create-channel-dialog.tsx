@@ -35,6 +35,7 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
   const router = useRouter();
   const { toast } = useToast();
   const { getToken } = useAuth();
+  const { refreshChannels } = useChannelContext();
   
   const form = useForm<ChannelFormData>({
     resolver: zodResolver(channelSchema),
@@ -57,7 +58,7 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
       }
       
       // Use HTTP POST to /api/channels endpoint with auth
-      const response = await fetch('/api/channels', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -77,6 +78,8 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
       }
 
       const newChannel = await response.json();
+      
+      await refreshChannels();
       
       toast({
         title: "Success",

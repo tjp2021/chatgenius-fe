@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { name, description, type, members } = body;
 
-    // Create channel using the documented API
+    // Make API call to your backend
     const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
       method: 'POST',
       headers: {
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
 
     if (!response.ok) {
       const error = await response.json();
-      return new NextResponse(error.message, { status: response.status });
+      throw new Error(error.message || 'Failed to create channel');
     }
 
     const channel = await response.json();
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
 
   } catch (error) {
     console.error('[CHANNELS_POST]', error);
-    return new NextResponse("Internal Error", { status: 500 });
+    return new NextResponse(error instanceof Error ? error.message : "Internal Error", { status: 500 });
   }
 }
 
