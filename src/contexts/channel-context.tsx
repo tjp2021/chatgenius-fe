@@ -29,7 +29,7 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const { getToken, userId } = useAuth();
-  const { socket } = useSocket();
+  const { socket, isConnected, isConnecting } = useSocket();
   const { toast } = useToast();
 
   const refreshChannels = useCallback(async () => {
@@ -42,6 +42,37 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
         throw new Error('No authentication token available');
       }
 
+      // If socket is connected, try socket first
+      if (socket && isConnected && !isConnecting) {
+        try {
+          const socketPromise = new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              reject(new Error('Socket timeout'));
+            }, 5000);
+
+            socket.emit('channels:list', { include: 'members.user' }, (response: any) => {
+              clearTimeout(timeout);
+              if (response.error) {
+                reject(new Error(response.error));
+              } else {
+                resolve(response);
+              }
+            });
+          });
+
+          const response: any = await socketPromise;
+          const userChannels = response.data.filter((channel: Channel) => 
+            channel.members?.some(member => member.userId === userId)
+          );
+          setChannels(userChannels);
+          console.log('Channels updated via socket:', userChannels);
+          return;
+        } catch (socketError) {
+          console.warn('Socket fetch failed, falling back to REST:', socketError);
+        }
+      }
+        
+      // Fallback to REST API
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels?include=members.user`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -52,24 +83,47 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
       if (!response.ok) {
         throw new Error('Failed to fetch channels');
       }
-      const data = await response.json();
-      console.log('Received channels data:', data);
       
-      // Only include channels where the user is a member
+      const data = await response.json();
       const userChannels = data.filter((channel: Channel) => 
         channel.members?.some(member => member.userId === userId)
       );
       
       setChannels(userChannels);
-      console.log('Channels updated:', userChannels);
+      console.log('Channels updated via REST:', userChannels);
     } catch (err) {
       console.error('Error refreshing channels:', err);
       setError(err instanceof Error ? err : new Error('Failed to fetch channels'));
     } finally {
       setIsLoading(false);
-      console.log('Channel refresh complete');
     }
-  }, [getToken, userId]);
+  }, [getToken, userId, socket, isConnected, isConnecting]);
+
+  // Refresh channels when socket connects
+  useEffect(() => {
+    if (isConnected && !isConnecting) {
+      refreshChannels();
+    }
+  }, [isConnected, isConnecting, refreshChannels]);
+
+  // Listen for channel updates
+  useEffect(() => {
+    if (!socket || !isConnected) return;
+
+    const handleChannelUpdate = (data: any) => {
+      refreshChannels();
+    };
+
+    socket.on('channel:updated', handleChannelUpdate);
+    socket.on('channel:deleted', handleChannelUpdate);
+    socket.on('channel:created', handleChannelUpdate);
+
+    return () => {
+      socket.off('channel:updated', handleChannelUpdate);
+      socket.off('channel:deleted', handleChannelUpdate);
+      socket.off('channel:created', handleChannelUpdate);
+    };
+  }, [socket, isConnected, refreshChannels]);
 
   const joinChannel = useCallback(async (channelId: string) => {
     try {

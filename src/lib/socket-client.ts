@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { Message, MessageEvent } from '@/types/message';
+import { socketLogger } from './socket-logger';
 
 interface SocketConfig {
   url: string;
@@ -8,6 +9,12 @@ interface SocketConfig {
   onAuthError?: (error: Error) => void;
   onConnectionError?: (error: Error) => void;
   onReconnect?: () => void;
+  onDisconnect?: (reason: string) => void;
+  timeout?: number;
+  reconnectOptions?: {
+    maxAttempts: number;
+    interval: number;
+  };
 }
 
 interface SocketResponse<T> {
@@ -19,13 +26,18 @@ interface SocketResponse<T> {
 export class ChatSocketClient {
   private socket!: Socket;
   private reconnectAttempts = 0;
-  private readonly MAX_RECONNECT_ATTEMPTS = 5;
-  private readonly RECONNECT_DELAY = 1000;
+  private readonly MAX_RECONNECT_ATTEMPTS: number;
+  private readonly RECONNECT_DELAY: number;
+  private readonly CONNECTION_TIMEOUT: number;
 
   public isConnected = false;
   public auth = { userId: '', token: '' };
 
   constructor(private config: SocketConfig) {
+    this.MAX_RECONNECT_ATTEMPTS = config.reconnectOptions?.maxAttempts || 5;
+    this.RECONNECT_DELAY = config.reconnectOptions?.interval || 5000;
+    this.CONNECTION_TIMEOUT = config.timeout || 10000;
+
     this.auth = {
       userId: config.userId,
       token: config.token
@@ -34,14 +46,29 @@ export class ChatSocketClient {
   }
 
   private initializeSocket() {
-    this.socket = io(this.config.url, {
+    let socketUrl: URL;
+    try {
+      socketUrl = new URL(this.config.url);
+    } catch (error) {
+      throw new Error(`Invalid socket URL: ${this.config.url}`);
+    }
+    
+    socketLogger.debug('Initializing connection to:', socketUrl.toString());
+    
+    // Clean up token format
+    const token = this.config.token.replace('Bearer ', '');
+    
+    this.socket = io(socketUrl.toString(), {
       auth: {
-        token: this.config.token,
+        token,
         userId: this.config.userId
       },
       reconnection: true,
       reconnectionDelay: this.RECONNECT_DELAY,
-      reconnectionAttempts: this.MAX_RECONNECT_ATTEMPTS
+      reconnectionAttempts: this.MAX_RECONNECT_ATTEMPTS,
+      transports: ['websocket', 'polling'],
+      timeout: this.CONNECTION_TIMEOUT,
+      path: '/socket.io'
     });
 
     this.setupEventHandlers();
@@ -49,15 +76,20 @@ export class ChatSocketClient {
 
   private setupEventHandlers() {
     this.socket.on('connect', () => {
+      socketLogger.connect(this.socket.id);
       this.isConnected = true;
     });
 
-    this.socket.on('disconnect', () => {
+    this.socket.on('disconnect', (reason) => {
+      socketLogger.disconnect(reason);
       this.isConnected = false;
+      this.config.onDisconnect?.(reason);
     });
 
     this.socket.on('connect_error', (error) => {
+      socketLogger.error(error, { socketId: this.socket.id });
       this.isConnected = false;
+      
       if (error.message.includes('Authentication failed')) {
         this.config.onAuthError?.(error);
       } else {
@@ -65,14 +97,43 @@ export class ChatSocketClient {
       }
     });
 
-    this.socket.on('reconnect', () => {
+    this.socket.on('reconnect', (attemptNumber) => {
+      socketLogger.debug(`Reconnected after ${attemptNumber} attempts`);
       this.reconnectAttempts = 0;
       this.isConnected = true;
       this.config.onReconnect?.();
     });
+
+    this.socket.on('reconnect_attempt', (attemptNumber) => {
+      socketLogger.debug(`Reconnection attempt ${attemptNumber}`);
+      // Update auth on reconnect attempt with clean token
+      const token = this.config.token.replace('Bearer ', '');
+      this.socket.auth = {
+        token,
+        userId: this.config.userId
+      };
+    });
+
+    this.socket.on('reconnect_error', (error) => {
+      socketLogger.error(error, { 
+        socketId: this.socket.id,
+        attempt: this.reconnectAttempts + 1
+      });
+      this.reconnectAttempts++;
+    });
+
+    this.socket.on('reconnect_failed', () => {
+      socketLogger.error(new Error('Reconnection failed'), {
+        maxAttempts: this.MAX_RECONNECT_ATTEMPTS
+      });
+    });
+
+    this.socket.on('error', (error: Error) => {
+      socketLogger.error(error, { socketId: this.socket.id });
+      this.config.onConnectionError?.(error);
+    });
   }
 
-  // Socket event methods
   public on<T = any>(event: string, callback: (data: T) => void) {
     this.socket.on(event, callback);
   }
@@ -81,50 +142,32 @@ export class ChatSocketClient {
     this.socket.off(event, callback);
   }
 
-  public emit<T = any>(event: string, data: any, callback?: (response: T) => void) {
-    if (callback) {
-      this.socket.emit(event, data, callback);
-    } else {
-      this.socket.emit(event, data);
-    }
+  public emit<T = any>(event: string, data: any): Promise<SocketResponse<T>> {
+    return new Promise((resolve) => {
+      this.socket.emit(event, data, (response: SocketResponse<T>) => {
+        resolve(response);
+      });
+    });
   }
 
-  // Message methods
   async sendMessage<T>(
     channelId: string, 
     content: string,
     tempId?: string
   ): Promise<SocketResponse<T>> {
-    return new Promise((resolve) => {
-      this.socket.emit(MessageEvent.SEND, 
-        { channelId, content, tempId },
-        (response: SocketResponse<T>) => {
-          resolve(response);
-        }
-      );
+    return this.emit<T>(MessageEvent.SEND, { 
+      channelId, 
+      content, 
+      tempId 
     });
   }
 
   async confirmDelivery(messageId: string): Promise<SocketResponse<void>> {
-    return new Promise((resolve) => {
-      this.socket.emit(MessageEvent.DELIVERED, 
-        { messageId },
-        (response: SocketResponse<void>) => {
-          resolve(response);
-        }
-      );
-    });
+    return this.emit(MessageEvent.DELIVERED, { messageId });
   }
 
   async markAsRead(messageId: string): Promise<SocketResponse<void>> {
-    return new Promise((resolve) => {
-      this.socket.emit(MessageEvent.READ, 
-        { messageId },
-        (response: SocketResponse<void>) => {
-          resolve(response);
-        }
-      );
-    });
+    return this.emit(MessageEvent.READ, { messageId });
   }
 
   onNewMessage<T>(callback: (message: T) => void) {
@@ -133,6 +176,7 @@ export class ChatSocketClient {
   }
 
   updateCredentials(token: string, userId: string) {
+    socketLogger.debug('Updating credentials');
     this.config.token = token;
     this.config.userId = userId;
     this.auth = { token, userId };
@@ -141,6 +185,7 @@ export class ChatSocketClient {
   }
 
   disconnect() {
+    socketLogger.debug('Disconnecting socket');
     this.socket.disconnect();
   }
-} 
+}

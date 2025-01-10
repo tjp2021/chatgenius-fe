@@ -1,4 +1,5 @@
 import { default as socketIOClient } from 'socket.io-client';
+import { logger } from '../utils/logger';
 
 interface SocketConfig {
   url: string;
@@ -14,31 +15,43 @@ interface SocketConfig {
     reconnectionAttempts: number;
     reconnectionDelay: number;
     timeout: number;
+    connectTimeout: number;
   };
 }
 
 export const createSocket = (token: string, userId: string) => {
-  if (!process.env.NEXT_PUBLIC_SOCKET_URL) {
+  const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
+  
+  if (!socketUrl) {
+    logger.error('Socket URL not configured');
     throw new Error('Socket URL not configured');
   }
 
-  return socketIOClient(process.env.NEXT_PUBLIC_SOCKET_URL, {
+  const url = socketUrl.startsWith('http') ? socketUrl : `https://${socketUrl}`;
+
+  const socket = socketIOClient(url, {
     path: '/socket.io/',
     auth: {
       token,
       userId
     },
-    transports: ['websocket'],
+    transports: ['websocket', 'polling'],
     autoConnect: false,
     reconnection: true,
-    reconnectionAttempts: 3,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 2000,
+    reconnectionDelayMax: 10000,
     randomizationFactor: 0.5,
-    timeout: 10000,
-    // Prevent multiple socket connections
+    timeout: 20000,
+    connectTimeout: 15000,
     multiplex: false,
-    // Force a new connection
     forceNew: true
   });
+
+  socket.on('connect', () => logger.info('Socket connected'));
+  socket.on('disconnect', (reason) => logger.warn(`Socket disconnected: ${reason}`));
+  socket.on('error', (error) => logger.error('Socket error:', error));
+  socket.on('reconnect_attempt', (attempt) => logger.info(`Reconnection attempt ${attempt}`));
+
+  return socket;
 }; 

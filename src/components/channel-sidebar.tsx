@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/compone
 import { Button } from '@/components/ui/button';
 import { useChannelContext } from '@/contexts/channel-context';
 import { CreateChannelDialog } from '@/components/create-channel-dialog';
+import { useSocket } from '@/hooks/useSocket';
 
 interface ChannelGroups {
   public: Channel[];
@@ -31,6 +32,7 @@ export function ChannelSidebar() {
   const [isBrowseModalOpen, setIsBrowseModalOpen] = useState(false);
   const [channelToLeave, setChannelToLeave] = useState<Channel | null>(null);
   const { channels, isLoading: isLoadingChannels, joinChannel, leaveChannel } = useChannelContext();
+  const { isConnected, isConnecting } = useSocket();
   const [isOpen, setIsOpen] = useState(false);
   
   // Debug log when channels update
@@ -38,10 +40,12 @@ export function ChannelSidebar() {
     console.log('Channel sidebar loading states:', {
       authLoading,
       isLoadingChannels,
+      isConnecting,
+      isConnected,
       hasUser: !!user,
       hasChannels: channels.length > 0
     });
-  }, [authLoading, isLoadingChannels, user, channels]);
+  }, [authLoading, isLoadingChannels, isConnecting, isConnected, user, channels]);
 
   const [expandedSections, setExpandedSections] = useState({
     public: true,
@@ -99,14 +103,42 @@ export function ChannelSidebar() {
     }
   };
 
-  // Show loader only if auth is still loading or channels are loading and we don't have any channels yet
-  if (!user || (isLoadingChannels && channels.length === 0)) {
-    console.log('Showing loader because:', { hasUser: !!user, isLoadingChannels, channelCount: channels.length });
-    return <LoadingSpinner />;
+  // Show loader only if:
+  // 1. Auth is still loading OR
+  // 2. Channels are loading and we don't have any channels yet
+  const isLoading = !user || (isLoadingChannels && channels.length === 0);
+
+  useEffect(() => {
+    console.log('Channel sidebar state:', {
+      isLoading,
+      authLoading,
+      isLoadingChannels,
+      isConnecting,
+      isConnected,
+      hasUser: !!user,
+      hasChannels: channels.length > 0
+    });
+  }, [isLoading, authLoading, isLoadingChannels, isConnecting, isConnected, user, channels]);
+
+  if (isLoading) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center bg-emerald-900 text-white">
+        <LoadingSpinner />
+        <p className="mt-4 text-sm text-emerald-100">
+          {!user ? 'Loading user...' : 'Loading channels...'}
+        </p>
+      </div>
+    );
   }
 
+  // Show channels even if socket is not connected - they'll be read-only
   return (
     <div className="h-full flex flex-col bg-emerald-900 text-white p-4">
+      {(!isConnected || isConnecting) && (
+        <div className="bg-yellow-500/10 text-yellow-200 px-3 py-2 text-sm rounded mb-4">
+          Connecting to chat server...
+        </div>
+      )}
       <div className="mb-6">
         <h2 className="font-semibold mb-2">Channels</h2>
         <button

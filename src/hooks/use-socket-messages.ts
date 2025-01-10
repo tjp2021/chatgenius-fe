@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+'use client';
+
+import { useState, useCallback, useEffect } from 'react';
 import { useSocket } from '@/providers/socket-provider';
-import type { Message } from '@/types/message';
-import { MessageEvent } from '@/types/message';
+import { Message, MessageEvent, MessageDeliveryStatus } from '@/types/message';
+import { nanoid } from 'nanoid';
+import { debounce } from '@/lib/utils';
 
 interface UseSocketMessagesProps {
   channelId: string;
@@ -12,76 +15,47 @@ interface UseSocketMessagesProps {
   onTypingStop?: (userId: string) => void;
 }
 
-interface UseSocketMessagesState {
+interface SocketMessagesState {
+  typingUsers: Set<string>;
   isLoading: boolean;
   error: Error | null;
-  typingUsers: Set<string>;
 }
 
-export const useSocketMessages = ({
+export function useSocketMessages({
   channelId,
   onNewMessage,
   onMessageDelivered,
   onMessageRead,
   onTypingStart,
   onTypingStop
-}: UseSocketMessagesProps) => {
-  const { 
-    socket,
-    isConnected,
-    sendMessage,
-    markAsRead,
-    startTyping: emitStartTyping,
-    stopTyping: emitStopTyping,
-    retryFailedMessage
-  } = useSocket();
-
-  const [state, setState] = useState<UseSocketMessagesState>({
+}: UseSocketMessagesProps) {
+  const { socket } = useSocket();
+  const [state, setState] = useState<SocketMessagesState>({
+    typingUsers: new Set(),
     isLoading: false,
-    error: null,
-    typingUsers: new Set()
+    error: null
   });
 
-  // Handle new messages
-  useEffect(() => {
-    if (!socket || !isConnected) return;
+  // Debounced typing functions
+  const emitStartTyping = useCallback(
+    debounce((channelId: string) => {
+      if (!socket || !socket.isConnected) return;
+      socket.emit(MessageEvent.TYPING_START, { channelId });
+    }, 500),
+    [socket]
+  );
 
-    const handleNewMessage = (message: Message) => {
-      if (message.channelId === channelId) {
-        onNewMessage?.(message);
-      }
-    };
-
-    socket.on(MessageEvent.NEW, handleNewMessage);
-    return () => {
-      socket.off(MessageEvent.NEW, handleNewMessage);
-    };
-  }, [socket, isConnected, channelId, onNewMessage]);
-
-  // Handle message delivery status
-  useEffect(() => {
-    if (!socket || !isConnected) return;
-
-    const handleDelivered = (data: { messageId: string }) => {
-      onMessageDelivered?.(data.messageId);
-    };
-
-    const handleRead = (data: { messageId: string }) => {
-      onMessageRead?.(data.messageId);
-    };
-
-    socket.on(MessageEvent.DELIVERED, handleDelivered);
-    socket.on(MessageEvent.READ, handleRead);
-
-    return () => {
-      socket.off(MessageEvent.DELIVERED, handleDelivered);
-      socket.off(MessageEvent.READ, handleRead);
-    };
-  }, [socket, isConnected, onMessageDelivered, onMessageRead]);
+  const emitStopTyping = useCallback(
+    debounce((channelId: string) => {
+      if (!socket || !socket.isConnected) return;
+      socket.emit(MessageEvent.TYPING_STOP, { channelId });
+    }, 500),
+    [socket]
+  );
 
   // Handle typing indicators
   useEffect(() => {
-    if (!socket || !isConnected) return;
+    if (!socket) return;
 
     const handleTypingStart = (data: { userId: string, channelId: string }) => {
       if (data.channelId === channelId) {
@@ -114,7 +88,7 @@ export const useSocketMessages = ({
       socket.off(MessageEvent.TYPING_START, handleTypingStart);
       socket.off(MessageEvent.TYPING_STOP, handleTypingStop);
     };
-  }, [socket, isConnected, channelId, onTypingStart, onTypingStop]);
+  }, [socket, channelId, onTypingStart, onTypingStop]);
 
   // Debounced typing indicator
   const startTyping = useCallback(() => {
@@ -128,29 +102,33 @@ export const useSocketMessages = ({
   }, [channelId, emitStopTyping]);
 
   // Send message with error handling
-  const send = useCallback(async (content: string) => {
-    try {
-      setState(prev => ({ ...prev, isLoading: true, error: null }));
-      await sendMessage(channelId, content);
-      setState(prev => ({ ...prev, isLoading: false }));
-    } catch (error) {
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        error: error instanceof Error ? error : new Error('Failed to send message')
-      }));
-      throw error;
+  const sendMessage = useCallback(async (content: string) => {
+    if (!socket || !socket.isConnected) {
+      throw new Error('Socket not connected');
     }
-  }, [channelId, sendMessage]);
+
+    const tempId = nanoid();
+    const tempMessage: Message = {
+      tempId,
+      content,
+      userId: socket.auth.userId,
+      channelId,
+      createdAt: new Date().toISOString(),
+      deliveryStatus: MessageDeliveryStatus.SENDING
+    };
+
+    // Stop typing when sending a message
+    stopTyping();
+
+    return socket.sendMessage(channelId, content, tempId);
+  }, [socket, channelId, stopTyping]);
 
   return {
-    send,
+    send: sendMessage,
     startTyping,
     stopTyping,
-    markRead: markAsRead,
-    retryFailed: retryFailedMessage,
     typingUsers: Array.from(state.typingUsers),
     isLoading: state.isLoading,
     error: state.error
   };
-}; 
+} 
