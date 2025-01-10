@@ -22,7 +22,7 @@ interface BrowseChannelsModalProps {
 export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalProps) {
   const router = useRouter();
   const { toast } = useToast();
-  const { channels, joinChannel } = useChannelContext();
+  const { channels, joinChannel, refreshChannels } = useChannelContext();
   const { user } = useUser();
   const api = useApi();
   const queryClient = useQueryClient();
@@ -51,6 +51,7 @@ export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalP
       await joinChannel(channelId);
       router.push(`/channels/${channelId}`);
       onOpenChange(false);
+      await refreshChannels();
       toast({
         title: 'Channel joined successfully',
         duration: 3000
@@ -62,7 +63,7 @@ export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalP
         duration: 3000
       });
     }
-  }, [joinChannel, router, onOpenChange, toast]);
+  }, [joinChannel, router, onOpenChange, toast, refreshChannels]);
 
   const handleLeaveChannel = useCallback(async (channel: Channel) => {
     // If user is the owner, show delete confirmation
@@ -77,6 +78,7 @@ export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalP
       await queryClient.invalidateQueries({ queryKey: ['channels'] });
       onOpenChange(false);
       router.push('/channels');
+      await refreshChannels();
       toast({
         title: 'Left channel successfully',
         duration: 3000
@@ -88,7 +90,7 @@ export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalP
         duration: 3000
       });
     }
-  }, [api, router, toast, user?.id, onOpenChange, queryClient]);
+  }, [api, router, toast, user?.id, onOpenChange, queryClient, refreshChannels]);
 
   const handleDeleteChannel = useCallback(async () => {
     if (!channelToDelete) return;
@@ -100,6 +102,7 @@ export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalP
       setChannelToDelete(null);
       onOpenChange(false);
       router.push('/channels');
+      await refreshChannels();
       toast({
         title: 'Channel deleted successfully',
         duration: 3000
@@ -111,7 +114,7 @@ export function BrowseChannelsModal({ open, onOpenChange }: BrowseChannelsModalP
         duration: 3000
       });
     }
-  }, [channelToDelete, api, router, toast, onOpenChange, queryClient]);
+  }, [channelToDelete, api, router, toast, onOpenChange, queryClient, refreshChannels]);
 
   return (
     <>

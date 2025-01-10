@@ -40,7 +40,9 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
       }
       const data = await response.json();
       setChannels(data);
+      console.log('Channels refreshed:', data);
     } catch (err) {
+      console.error('Error refreshing channels:', err);
       setError(err instanceof Error ? err : new Error('Failed to fetch channels'));
     } finally {
       setIsLoading(false);
@@ -48,7 +50,12 @@ export const ChannelProvider = ({ children }: { children: React.ReactNode }) => 
   }, [getToken]);
 
   return (
-    <ChannelContext.Provider value={{ channels, isLoading, error, refreshChannels }}>
+    <ChannelContext.Provider value={{ 
+      channels, 
+      isLoading, 
+      error, 
+      refreshChannels
+    }}>
       {children}
     </ChannelContext.Provider>
   );

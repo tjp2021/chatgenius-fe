@@ -8,9 +8,12 @@ export interface Channel {
   description?: string;
   type: 'PUBLIC' | 'PRIVATE' | 'DM';
   createdAt: string;
+  ownerId: string;
+  members?: ChannelMember[];
   _count: {
     members: number;
     messages: number;
+    lastViewedMessageCount?: number;
   };
 }
 
@@ -21,12 +24,8 @@ export interface CreateChannelDto {
 }
 
 export interface ChannelMember {
-  id: string;
-  channelId: string;
   userId: string;
   role: 'OWNER' | 'ADMIN' | 'MEMBER';
-  user: User;
-  joinedAt: string;
 }
 
 export interface ChannelMutationResponse {
