@@ -109,7 +109,7 @@ export default function ChannelsPage() {
           <TabsContent value="getting-started" className="mt-3">
             <div className="space-y-1.5">
               <p className="text-sm text-gray-600">1. Start by browsing public channels to find conversations that interest you</p>
-              <p className="text-sm text-gray-600">2. Join channels by clicking the "Join Channel" button</p>
+              <p className="text-sm text-gray-600">2. Join channels by clicking the &quot;Join Channel&quot; button</p>
               <p className="text-sm text-gray-600">3. Create your own channels for specific topics or teams</p>
             </div>
           </TabsContent>

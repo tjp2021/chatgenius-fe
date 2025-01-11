@@ -5,6 +5,7 @@ import { useRef, useEffect } from 'react';
 import { Channel, ChannelType, ChannelMember } from '@/types/channel';
 import { Hash, Lock, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import Image from 'next/image';
 
 interface ChannelWithDetails extends Channel {
   _count: {

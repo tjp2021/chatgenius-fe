@@ -4,6 +4,7 @@ import { ChannelType, ChannelWithDetails, OnlineUsers } from '@/types/channel';
 import { cn } from '@/lib/utils';
 import { Hash, Lock, Users, ChevronDown, ChevronRight, MoreVertical } from 'lucide-react';
 import { Menu } from '@headlessui/react';
+import Image from 'next/image';
 
 interface ChannelSectionProps {
   title: string;
@@ -128,10 +129,12 @@ export const ChannelSection: React.FC<ChannelSectionProps> = ({
                   {isDM && (
                     <>
                       {otherUser?.imageUrl ? (
-                        <img 
+                        <Image 
                           src={otherUser.imageUrl} 
                           alt={otherUser.name || 'User'}
-                          className="w-6 h-6 rounded-full"
+                          width={24}
+                          height={24}
+                          className="rounded-full"
                         />
                       ) : (
                         <Users className="h-4 w-4" />

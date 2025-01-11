@@ -9,7 +9,7 @@ export const createServerSupabaseClient = () => {
   }
 };
 
-export const getSupabaseUser = async (/* userId */: string) => {
+export const getSupabaseUser = async (_userId: string) => {
   try {
     // Fetch user
   } catch (error) {
@@ -17,7 +17,7 @@ export const getSupabaseUser = async (/* userId */: string) => {
   }
 };
 
-export const createSupabaseUser = async (/* userData */: any) => {
+export const createSupabaseUser = async (_userData: any) => {
   try {
     // Create user
   } catch (error) {

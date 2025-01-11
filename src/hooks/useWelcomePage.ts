@@ -44,7 +44,7 @@ export function useWelcomePage(): UseWelcomePageReturn {
         router.push(`/channels/${targetChannel.id}`);
       }
     }
-  }, [channelGroups, hasNoChannels, isLoading, router]);
+  }, [channelGroups, hasNoChannels, isLoading, router, error]);
 
   useEffect(() => {
     if (error) {

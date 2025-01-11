@@ -159,7 +159,7 @@ export function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsModalProp
                   <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
               ) : joinedChannels.length === 0 ? (
-                <p className="text-center text-sm text-muted-foreground">You haven't joined any channels yet</p>
+                <p className="text-center text-sm text-muted-foreground">You haven&apos;t joined any channels yet</p>
               ) : (
                 <div className="space-y-4">
                   {joinedChannels.map((channel) => (

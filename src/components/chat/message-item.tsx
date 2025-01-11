@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Icons } from '@/components/ui/icons';
+import Image from 'next/image';
 
 interface MessageItemProps {
   message: Message;
@@ -42,10 +43,12 @@ export function MessageItem({ message, isOwnMessage }: MessageItemProps) {
     >
       {!isOwnMessage && (
         <div className="h-8 w-8 rounded-full bg-gray-200">
-          <img
-            src={message.user.imageUrl || '/default-avatar.png'}
-            alt={message.user.username || 'User'}
-            className="h-full w-full rounded-full object-cover"
+          <Image 
+            src={message.user.imageUrl} 
+            alt={message.user.name}
+            width={32}
+            height={32}
+            className="rounded-full"
           />
         </div>
       )}

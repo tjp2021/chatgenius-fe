@@ -30,7 +30,7 @@ export const handleAuth = async (event: any) => {
   }
 };
 
-export const syncUserWithSupabase = async (/* user */: any) => {
+export const syncUserWithSupabase = async (_user: any) => {
   try {
     // Handle sync logic
   } catch (error) {
@@ -38,7 +38,7 @@ export const syncUserWithSupabase = async (/* user */: any) => {
   }
 };
 
-export const deleteUserFromSupabase = async (/* userId */: string) => {
+export const deleteUserFromSupabase = async (_userId: string) => {
   try {
     // Handle delete logic
   } catch (error) {

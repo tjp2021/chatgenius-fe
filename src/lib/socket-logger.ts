@@ -9,25 +9,25 @@ export const socketLogger = {
   
   error: (error: Error, details?: LogDetails) => {
     if (details) {
-      Object.entries(details).forEach(([/* key */, /* value */]) => {
+      Object.entries(details).forEach(([_key, _value]) => {
         // Handle details
       });
     }
   },
   
-  disconnect: (/* reason */: string) => {
+  disconnect: (_reason: string) => {
     // Handle disconnect
   },
   
-  debug: (/* message */: string, /* ...args */: any[]) => {
+  debug: (_message: string, ..._args: any[]) => {
     // Handle debug
   },
   
-  warn: (/* message */: string, /* ...args */: any[]) => {
+  warn: (_message: string, ..._args: any[]) => {
     // Handle warn
   },
   
-  info: (/* message */: string, /* ...args */: any[]) => {
+  info: (_message: string, ..._args: any[]) => {
     // Handle info
   }
 }; 

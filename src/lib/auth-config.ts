@@ -1,4 +1,4 @@
-import { useAuth } from '@clerk/nextjs';
+import { auth } from '@clerk/nextjs';
 
 export interface AuthHeaders {
   Authorization: string;
@@ -12,8 +12,8 @@ export interface AuthConfig {
 
 export const getAuthConfig = async (): Promise<AuthConfig | null> => {
   try {
-    const { getToken } = useAuth();
-    const token = await getToken();
+    const session = await auth();
+    const token = await session?.getToken();
     
     if (!token) {
       return null;

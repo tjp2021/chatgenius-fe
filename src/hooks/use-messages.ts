@@ -48,7 +48,7 @@ export function useMessages(channelId: string) {
     };
 
     loadMessages();
-  }, [channelId, socket, isConnected]);
+  }, [channelId, socket, isConnected, isConnecting]);
 
   // Handle real-time message events
   useEffect(() => {
@@ -100,7 +100,7 @@ export function useMessages(channelId: string) {
       socket.off(MessageEvent.NEW, handleNewMessage);
       socket.off(MessageEvent.SENT, handleMessageSent);
     };
-  }, [socket, channelId, isConnected]);
+  }, [socket, channelId, isConnected, isConnecting]);
 
   const sendMessage = useCallback(async (content: string) => {
     if (!socket) {
