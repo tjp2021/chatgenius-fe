@@ -5,7 +5,6 @@ import { useAuth } from '@clerk/nextjs';
 import { useApi } from '@/hooks/useApi';
 import { Channel, ChannelType } from '@/types/channel';
 import { useSocket } from '@/hooks/useSocket';
-import { auth } from "@clerk/nextjs";
 
 interface ChannelContextType {
   channels: Channel[];
@@ -24,7 +23,7 @@ interface ChannelContextType {
 const ChannelContext = createContext<ChannelContextType | undefined>(undefined);
 
 export function ChannelProvider({ children }: { children: React.ReactNode }) {
-  const { userId } = useAuth();
+  const { userId, getToken } = useAuth();
   const { socket } = useSocket();
   const { joinChannel, leaveChannel } = useApi();
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -35,9 +34,12 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
   const refreshChannels = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
+      const token = await getToken();
+      if (!token) throw new Error('No auth token available');
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels`, {
         headers: {
-          'Authorization': `Bearer ${await auth().getToken()}`
+          'Authorization': `Bearer ${token}`
         }
       });
       if (!response.ok) throw new Error('Failed to refresh channels');

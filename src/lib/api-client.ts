@@ -2,6 +2,15 @@
 
 import { auth } from '@clerk/nextjs';
 
+interface SearchUsersResponse {
+  users: Array<{
+    id: string;
+    name: string;
+    imageUrl: string;
+    isOnline: boolean;
+  }>;
+}
+
 export class ApiClient {
   private baseUrl: string;
   private defaultHeaders: HeadersInit;
@@ -21,7 +30,7 @@ export class ApiClient {
     };
   }
 
-  async get<T>(path: string, params = {}, retries = 3, backoff = 1000) {
+  async get<T>(path: string, params = {}, retries = 3, backoff = 1000): Promise<T> {
     const queryString = new URLSearchParams(params).toString();
     const url = `${this.baseUrl}${path}${queryString ? `?${queryString}` : ''}`;
     const headers = await this.getAuthHeaders();
@@ -39,7 +48,7 @@ export class ApiClient {
     }
   }
 
-  async post<T>(path: string, body: unknown) {
+  async post<T>(path: string, body: unknown): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const headers = await this.getAuthHeaders();
 
@@ -53,7 +62,7 @@ export class ApiClient {
     return (await response.json()) as T;
   }
 
-  async put<T>(path: string, body: unknown) {
+  async put<T>(path: string, body: unknown): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const headers = await this.getAuthHeaders();
 
@@ -67,7 +76,7 @@ export class ApiClient {
     return (await response.json()) as T;
   }
 
-  async delete<T>(path: string) {
+  async delete<T>(path: string): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const headers = await this.getAuthHeaders();
 
@@ -79,4 +88,10 @@ export class ApiClient {
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     return (await response.json()) as T;
   }
+
+  async searchUsers(query: string): Promise<SearchUsersResponse> {
+    return this.get<SearchUsersResponse>('/api/users/search', { query });
+  }
 }
+
+export const apiClient = new ApiClient(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001');

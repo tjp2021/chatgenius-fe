@@ -24,16 +24,15 @@ export interface MessageUser {
 }
 
 export interface Message {
-  id?: string;
-  tempId?: string;
+  id: string;
   content: string;
   channelId: string;
   userId: string;
   createdAt: string;
-  updatedAt?: string;
-  status?: MessageEvent;
-  deliveryStatus?: MessageDeliveryStatus;
-  user?: {
+  updatedAt: string;
+  isRead: boolean;
+  isDelivered: boolean;
+  sender: {
     id: string;
     name: string;
     imageUrl?: string;

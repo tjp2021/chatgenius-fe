@@ -1,16 +1,21 @@
 'use client';
 
-import { useState, /* useCallback, useEffect */ } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Loader2 } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
-import { /* useToast */ } from './ui/use-toast';
-import { useDebounce } from '@/hooks/use-debounce';
-import { useAuth } from "@clerk/nextjs";
 import { Button } from '@/components/ui/button';
+import { useDebounce } from '@/hooks/use-debounce';
+
+interface User {
+  id: string;
+  name: string;
+  imageUrl: string;
+  isOnline: boolean;
+}
 
 interface UserSearchProps {
   onSelect: (userId: string) => void;
@@ -21,14 +26,10 @@ interface UserSearchProps {
 export function UserSearch({ onSelect, selectedUsers, placeholder = 'Search users...' }: UserSearchProps) {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
-  const { getToken } = useAuth();
 
   const { data, isLoading } = useQuery({
     queryKey: ['users', debouncedSearch],
-    queryFn: async () => {
-      const token = await getToken();
-      return apiClient.searchUsers(debouncedSearch, token);
-    },
+    queryFn: () => apiClient.searchUsers(debouncedSearch),
     enabled: debouncedSearch.length > 0
   });
 
@@ -52,7 +53,7 @@ export function UserSearch({ onSelect, selectedUsers, placeholder = 'Search user
       )}
 
       <div className="space-y-2">
-        {data?.users.map((user) => {
+        {data?.users.map((user: User) => {
           const isSelected = selectedUsers.includes(user.id);
           
           return (

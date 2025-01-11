@@ -1,129 +1,260 @@
 'use client';
 
-import { useCallback, useEffect } from 'react';
-import { useSocket } from '@/providers/socket-provider';
+import { useEffect, useState } from 'react';
+import { useSocket } from '@/hooks/useSocket';
+import { Message } from '@/types/message';
+import { SocketResponse } from '@/types/socket';
 import { useToast } from '@/components/ui/use-toast';
-import { useQueryClient } from '@tanstack/react-query';
-import type { Channel } from '@/types/channel';
 
-interface ChannelMember {
-  id: string;
-  userId: string;
+interface UseChannelSocketProps {
   channelId: string;
-  role: 'OWNER' | 'ADMIN' | 'MEMBER';
-  joinedAt: string;
-  user?: {
-    id: string;
-    name: string;
-    imageUrl?: string;
-  };
+  userId: string;
+  onNewMessage?: (message: Message) => void;
+  onMessageDelivered?: (messageId: string) => void;
+  onMessageRead?: (messageId: string) => void;
+  onJoinSuccess?: () => void;
+  onLeaveSuccess?: () => void;
+  onError?: (error: Error) => void;
+  onTypingStart?: (userId: string) => void;
+  onTypingStop?: (userId: string) => void;
 }
 
-interface ChannelEvent {
-  type?: 'member_left' | 'member_joined';
-  channelId?: string;
-  userId?: string;
-  member?: ChannelMember;
-  channel?: Channel;
-  error?: string;
+interface UseChannelSocketReturn {
+  joinChannel: () => Promise<void>;
+  leaveChannel: () => Promise<void>;
+  sendMessage: (content: string) => Promise<void>;
+  markAsRead: (messageId: string) => Promise<void>;
+  startTyping: () => void;
+  stopTyping: () => void;
+  isConnected: boolean;
+  error: Error | null;
 }
 
-export function useChannelSocket() {
-  const { socket, isConnected } = useSocket();
+export function useChannelSocket(props: UseChannelSocketProps): UseChannelSocketReturn {
+  const { socket, isConnected, error } = useSocket();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
+  const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout>();
 
-  // Handle channel events
-  const handleChannelEvent = useCallback((event: ChannelEvent) => {
-    console.log('Channel event received:', event);
+  useEffect(() => {
+    if (!socket || !props.channelId) return;
 
-    if (event.error) {
+    const handleNewMessage = (message: Message) => {
+      if (message.channelId === props.channelId) {
+        props.onNewMessage?.(message);
+      }
+    };
+
+    const handleMessageDelivered = (data: { messageId: string }) => {
+      props.onMessageDelivered?.(data.messageId);
+    };
+
+    const handleMessageRead = (data: { messageId: string }) => {
+      props.onMessageRead?.(data.messageId);
+    };
+
+    const handleTypingStart = (data: { userId: string, channelId: string }) => {
+      if (data.channelId === props.channelId && data.userId !== props.userId) {
+        props.onTypingStart?.(data.userId);
+      }
+    };
+
+    const handleTypingStop = (data: { userId: string, channelId: string }) => {
+      if (data.channelId === props.channelId && data.userId !== props.userId) {
+        props.onTypingStop?.(data.userId);
+      }
+    };
+
+    socket.on('message:new', handleNewMessage);
+    socket.on('message:delivered', handleMessageDelivered);
+    socket.on('message:read', handleMessageRead);
+    socket.on('typing:start', handleTypingStart);
+    socket.on('typing:stop', handleTypingStop);
+
+    return () => {
+      socket.off('message:new', handleNewMessage);
+      socket.off('message:delivered', handleMessageDelivered);
+      socket.off('message:read', handleMessageRead);
+      socket.off('typing:start', handleTypingStart);
+      socket.off('typing:stop', handleTypingStop);
+    };
+  }, [socket, props.channelId, props.userId]);
+
+  const joinChannel = async () => {
+    if (!socket) {
       toast({
-        title: 'Channel Error',
-        description: event.error,
-        variant: 'destructive'
+        title: "Error",
+        description: "Socket not connected",
+        variant: "destructive"
       });
       return;
     }
 
-    // Update channel data in cache
-    queryClient.setQueryData(['channels'], (old: Channel[] = []) => {
-      // For member_left event
-      if (event.type === 'member_left' && event.channelId && event.userId) {
-        console.log('Member left event:', event);
-        // If current user left, remove the channel
-        if (event.userId === socket?.auth?.userId) {
-          return old.filter(ch => ch.id !== event.channelId);
-        }
-        // If another user left, update the members list
-        return old.map(ch => {
-          if (ch.id === event.channelId) {
-            return {
-              ...ch,
-              members: (ch.members || []).filter(m => m.userId !== event.userId)
-            };
-          }
-          return ch;
+    try {
+      const response = await socket.joinChannel(props.channelId);
+
+      if (response.success) {
+        props.onJoinSuccess?.();
+      } else {
+        props.onError?.(new Error(response.error || 'Failed to join channel'));
+        toast({
+          title: "Error",
+          description: response.error || 'Failed to join channel',
+          variant: "destructive"
         });
       }
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to join channel');
+      props.onError?.(error);
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  };
 
-      // For member_joined event
-      if (event.type === 'member_joined' && event.channelId && event.member) {
-        console.log('Member joined event:', event);
-        return old.map(ch => {
-          if (ch.id === event.channelId) {
-            return {
-              ...ch,
-              members: [...(ch.members || []), event.member]
-            };
-          }
-          return ch;
+  const leaveChannel = async () => {
+    if (!socket) {
+      toast({
+        title: "Error",
+        description: "Socket not connected",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const response = await socket.leaveChannel(props.channelId);
+
+      if (response.success) {
+        props.onLeaveSuccess?.();
+      } else {
+        props.onError?.(new Error(response.error || 'Failed to leave channel'));
+        toast({
+          title: "Error",
+          description: response.error || 'Failed to leave channel',
+          variant: "destructive"
         });
       }
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to leave channel');
+      props.onError?.(error);
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  };
 
-      // For channel updates (created, updated)
-      if (event.channel) {
-        console.log('Channel update event:', event);
-        const channelWithMembers = {
-          ...event.channel,
-          members: event.channel.members || []
-        };
+  const sendMessage = async (content: string) => {
+    if (!socket) {
+      toast({
+        title: "Error",
+        description: "Socket not connected",
+        variant: "destructive"
+      });
+      return;
+    }
 
-        const exists = old.some(ch => ch.id === channelWithMembers.id);
-        if (!exists) {
-          return [...old, channelWithMembers];
-        }
-        return old.map(ch => ch.id === channelWithMembers.id ? channelWithMembers : ch);
+    try {
+      const response = await socket.sendMessage<Message>(props.channelId, content);
+
+      if (!response.success) {
+        props.onError?.(new Error(response.error || 'Failed to send message'));
+        toast({
+          title: "Error",
+          description: response.error || 'Failed to send message',
+          variant: "destructive"
+        });
       }
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to send message');
+      props.onError?.(error);
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  };
 
-      return old;
+  const markAsRead = async (messageId: string) => {
+    if (!socket) {
+      toast({
+        title: "Error",
+        description: "Socket not connected",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const response = await socket.emit<void>('message:read', {
+        messageId
+      });
+
+      if (!response.success) {
+        props.onError?.(new Error(response.error || 'Failed to mark message as read'));
+        toast({
+          title: "Error",
+          description: response.error || 'Failed to mark message as read',
+          variant: "destructive"
+        });
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to mark message as read');
+      props.onError?.(error);
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  };
+
+  const startTyping = () => {
+    if (!socket) return;
+
+    socket.emit('typing:start', {
+      channelId: props.channelId,
+      userId: props.userId
     });
-  }, [toast, queryClient, socket?.auth?.userId]);
 
-  // Subscribe to channel events when socket is connected
-  useEffect(() => {
-    if (!socket || !isConnected) return;
+    // Clear existing timeout
+    if (typingTimeout) {
+      clearTimeout(typingTimeout);
+    }
 
-    console.log('Setting up channel event listeners');
+    // Set new timeout to stop typing after 3 seconds
+    const timeout = setTimeout(() => {
+      stopTyping();
+    }, 3000);
 
-    socket.on('channel:created', handleChannelEvent);
-    socket.on('channel:updated', handleChannelEvent);
-    socket.on('channel:member_joined', handleChannelEvent);
-    socket.on('channel:member_left', handleChannelEvent);
-    socket.on('channel:error', handleChannelEvent);
+    setTypingTimeout(timeout);
+  };
 
-    return () => {
-      console.log('Cleaning up channel event listeners');
-      socket.off('channel:created', handleChannelEvent);
-      socket.off('channel:updated', handleChannelEvent);
-      socket.off('channel:member_joined', handleChannelEvent);
-      socket.off('channel:member_left', handleChannelEvent);
-      socket.off('channel:error', handleChannelEvent);
-    };
-  }, [socket, isConnected, handleChannelEvent]);
+  const stopTyping = () => {
+    if (!socket) return;
+
+    socket.emit('typing:stop', {
+      channelId: props.channelId,
+      userId: props.userId
+    });
+
+    if (typingTimeout) {
+      clearTimeout(typingTimeout);
+    }
+  };
 
   return {
-    socket,
-    isConnected
+    joinChannel,
+    leaveChannel,
+    sendMessage,
+    markAsRead,
+    startTyping,
+    stopTyping,
+    isConnected,
+    error
   };
 } 

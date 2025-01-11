@@ -1,28 +1,57 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
 model Channel {
   id          String    @id @default(cuid())
-  name        String
-  description String?
-  type        String    // PUBLIC, PRIVATE, or DM
+  name        String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-  createdById String
   members     Member[]
   messages    Message[]
-
-  @@index([createdById])
 }
 
 model Member {
   id        String   @id @default(cuid())
   userId    String
   channelId String
-  role      String   // ADMIN or MEMBER
-  joinedAt  DateTime @default(now())
   channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([userId, channelId])
+  @@index([channelId])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  content   String
+  userId    String
+  channelId String
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  readBy    ReadReceipt[]
+
   @@index([channelId])
   @@index([userId])
 }
 
-// Add other models as needed (Message, etc.) 
+model ReadReceipt {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  channelId String
+  readAt    DateTime @default(now())
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([messageId])
+  @@index([userId])
+  @@index([channelId])
+} 

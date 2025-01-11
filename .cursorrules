@@ -530,6 +530,102 @@
       "header": "Deductive Analysis [CG-20231218-002]",
       "content": "## Error Pattern Analysis\n- Pattern 1: Connection drops after authentication\n- Pattern 2: Intermittent token validation failures\n\n## Risk Analysis\n1. **High Risk**: Token validation logic (90% probability)\n   - Impact: Authentication failures\n   - Affected areas: All authenticated requests\n\n## Solution Candidates\n1. **Token Validation Fix**\n   - Complexity: Medium\n   - Implementation: Update validation logic\n   - Expected outcome: Stable connections\n\n## Implementation Plan\n1. Investigate token validation\n2. Add logging checkpoints\n3. Implement fix\n4. Validate solution"
     }
+  },
+  "planningCommands": {
+    "generatePlan": {
+      "trigger": "Run generate-plan",
+      "description": "Creates a new planning document in the plan-notes directory",
+      "parameters": {
+        "featureName": {
+          "type": "string",
+          "description": "Name of the feature to plan"
+        }
+      },
+      "output": {
+        "directory": "implementation/plan-notes",
+        "fileFormat": "markdown",
+        "template": {
+          "filename": "{featureName}-plan.md",
+          "content": [
+            "# Feature: {featureName}",
+            "Created: {date}",
+            "Status: Draft",
+            "",
+            "## Overview",
+            "[Brief description]",
+            "",
+            "## Requirements",
+            "- [ ] Requirement 1",
+            "- [ ] Requirement 2",
+            "",
+            "## Technical Approach",
+            "- Architecture:",
+            "- Key Components:",
+            "- Dependencies:",
+            "",
+            "## Timeline",
+            "- Phase 1:",
+            "- Phase 2:",
+            "- Phase 3:",
+            "",
+            "## Risks & Considerations",
+            "- Risk 1:",
+            "- Risk 2:",
+            "",
+            "## Notes",
+            "[Space for ongoing notes]"
+          ]
+        }
+      }
+    },
+    "addNote": {
+      "trigger": "Run add-note",
+      "description": "Adds a new note to an existing plan",
+      "parameters": {
+        "featureName": {
+          "type": "string",
+          "description": "Name of the feature plan to update"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["technical", "requirement", "risk", "general"],
+          "description": "Type of note to add"
+        }
+      }
+    },
+    "updateStatus": {
+      "trigger": "Run update-status",
+      "description": "Updates the status of a feature plan",
+      "parameters": {
+        "featureName": {
+          "type": "string",
+          "description": "Name of the feature plan to update"
+        },
+        "phase": {
+          "type": "string",
+          "description": "Current phase of the feature"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["not-started", "in-progress", "blocked", "completed"],
+          "description": "Current status of the phase"
+        }
+      }
+    },
+    "updatePlan": {
+      "trigger": "Run update-plan",
+      "description": "Updates a section of an existing plan",
+      "parameters": {
+        "featureName": {
+          "type": "string",
+          "description": "Name of the feature plan to update"
+        },
+        "section": {
+          "type": "string",
+          "description": "Section of the plan to update"
+        }
+      }
+    }
   }
 }
 
