@@ -6,11 +6,24 @@ import { useToast } from '@/components/ui/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Channel } from '@/types/channel';
 
+interface ChannelMember {
+  id: string;
+  userId: string;
+  channelId: string;
+  role: 'OWNER' | 'ADMIN' | 'MEMBER';
+  joinedAt: string;
+  user?: {
+    id: string;
+    name: string;
+    imageUrl?: string;
+  };
+}
+
 interface ChannelEvent {
   type?: 'member_left' | 'member_joined';
   channelId?: string;
   userId?: string;
-  member?: any;
+  member?: ChannelMember;
   channel?: Channel;
   error?: string;
 }

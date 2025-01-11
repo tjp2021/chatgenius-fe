@@ -1,7 +1,7 @@
 'use client';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
-import { Tabs, /* TabsContent, */ TabsList, TabsTrigger } from "./ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
@@ -94,21 +94,12 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
   };
 
   const handleSubmit = async (data: ChannelFormData) => {
-    console.log('Submit handler triggered with data:', data);
-    console.log('Current active tab:', activeTab);
-    console.log('Selected member IDs:', data.members);
-    console.log('Current user ID:', user?.id);
-    console.log('Form state:', form.getValues());
-    console.log('Submit button disabled?', isSubmitDisabled());
-
     try {
       setIsLoading(true);
       const token = await getToken();
-      console.log('Got auth token:', !!token);
 
       // For private channels, ensure we have at least one other member
       if (activeTab === 'private' && data.members.length === 0) {
-        console.log('Private channel validation failed - no members');
         toast({
           title: 'Error',
           description: 'Please add at least one member to the private channel',
@@ -130,8 +121,6 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
         })
       };
 
-      console.log('Sending request with body:', requestBody);
-
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels`, {
         method: 'POST',
         headers: {
@@ -140,24 +129,12 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
         },
         body: JSON.stringify(requestBody),
       });
-
-      console.log('Response status:', response.status);
       
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Failed to create channel:', {
-          status: response.status,
-          error: errorData,
-          sentData: requestBody
-        });
         throw new Error('Failed to create channel');
       }
 
       const channel = await response.json();
-      console.log('Channel created successfully:', {
-        channelData: channel,
-        requestSent: requestBody
-      });
 
       // First close the dialog and reset form
       onOpenChange(false);
@@ -175,7 +152,6 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
       router.push(`/channels/${channel.id}`);
 
     } catch (error) {
-      console.error('Channel creation error:', error);
       toast({
         title: 'Error',
         description: 'Failed to create channel',
@@ -184,25 +160,6 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
     } finally {
       setIsLoading(false);
     }
-  };
-
-  // Disable form submission for DM tab if no members selected
-  const isSubmitDisabled = () => {
-    const otherMembers = form.getValues('members').filter(id => id !== user?.id);
-    console.log('Submit button check:', {
-      activeTab,
-      otherMembers,
-      selectedMembers: form.getValues('members'),
-      currentUserId: user?.id,
-      nameValue: form.getValues("name"),
-      isLoading
-    });
-
-    if (activeTab === "dm") {
-      return otherMembers.length === 0;
-    }
-    // For non-DM channels, require a name
-    return !form.getValues("name") || isLoading;
   };
 
   return (
@@ -267,7 +224,7 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
                 <FormField
                   control={form.control}
                   name="members"
-                  render={({ field }) => (
+                  render={() => (
                     <FormItem>
                       <FormLabel>{activeTab === "dm" ? "Select Users" : "Add Members"}</FormLabel>
                       <FormControl>
@@ -295,19 +252,6 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
                 <Button 
                   type="submit" 
                   disabled={isLoading || !form.formState.isValid}
-                  onClick={() => {
-                    console.log('Button clicked');
-                    console.log('Detailed form state:', {
-                      isValid: form.formState.isValid,
-                      errors: form.formState.errors,
-                      values: form.getValues(),
-                      selectedMembers: form.getValues('members'),
-                      activeTab,
-                      isDirty: form.formState.isDirty,
-                      dirtyFields: form.formState.dirtyFields,
-                      touchedFields: form.formState.touchedFields
-                    });
-                  }}
                   className={!form.formState.isValid ? "opacity-50 cursor-not-allowed" : ""}
                 >
                   {isLoading ? "Creating..." : `Create Channel${!form.formState.isValid ? ' (Validation Failed)' : ''}`}

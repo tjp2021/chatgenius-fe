@@ -8,8 +8,6 @@ import { cn } from '@/lib/utils';
 import type { Message } from '@/types';
 
 interface MessageItemProps {
-  /* messageId: string; */
-  content: string;
   message: Message;
   onRetry?: (messageId: string) => void;
 }
@@ -57,7 +55,7 @@ export function MessageItem({ message, onRetry }: MessageItemProps) {
             <Button 
               variant="ghost" 
               size="sm" 
-              onClick={() => onRetry(message.id!)}
+              onClick={() => message.id && onRetry(message.id)}
               className="h-6 px-2 text-xs"
             >
               Retry

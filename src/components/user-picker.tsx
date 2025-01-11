@@ -1,19 +1,10 @@
 'use client';
 
-import { useState } from "react";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/* interface User {
-  id: string;
-  name: string;
-  email: string;
-  avatar?: string;
-} */
-
 interface UserPickerProps {
-  /* users: User[]; */
   onSelect: (userId: string) => void;
   selectedUsers: string[];
 }
@@ -32,10 +23,7 @@ const useUsers = () => {
 };
 
 export function UserPicker({ onSelect, selectedUsers }: UserPickerProps) {
-  const [searchQuery, setSearchQuery] = useState('');
-  /* const [open, setOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false); */
-  const { users, isLoading } = useUsers();
+  const { users } = useUsers();
 
   const toggleUser = (userId: string) => {
     if (selectedUsers.includes(userId)) {

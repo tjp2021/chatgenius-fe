@@ -11,6 +11,7 @@ const TYPING_EXPIRATION = 5000; // 5s expiration
 export function useTyping(channelId: string) {
   const { socket } = useSocket();
   const [typingUsers, setTypingUsers] = useState<TypingIndicator[]>([]);
+  const [isTyping, setIsTyping] = useState(false);
 
   // Clean up expired typing indicators
   useEffect(() => {
@@ -58,46 +59,53 @@ export function useTyping(channelId: string) {
   }, [socket, channelId]);
 
   // Send typing start event (debounced)
-  const sendTypingStart = useCallback(
-    debounce(() => {
+  const debouncedTypingStart = useCallback(() => {
+    const debouncedFn = () => {
       if (!socket?.connected) return;
 
+      const auth = socket.auth as { userId: string; username: string };
       socket.emit(MessageEvent.TYPING_START, {
         channelId,
-        userId: socket.auth?.userId,
-        username: socket.auth?.userName,
+        userId: auth.userId,
+        username: auth.username,
         timestamp: Date.now()
       });
-    }, TYPING_DEBOUNCE),
-    [socket, channelId]
-  );
+    };
+
+    return debounce(debouncedFn, TYPING_DEBOUNCE);
+  }, [socket, channelId])();
 
   // Send typing stop event
   const sendTypingStop = useCallback(() => {
     if (!socket?.connected) return;
 
+    const auth = socket.auth as { userId: string };
     socket.emit(MessageEvent.TYPING_STOP, {
       channelId,
-      userId: socket.auth?.userId
+      userId: auth.userId
     });
   }, [socket, channelId]);
 
   // Handle text input
-  const handleTyping = useCallback((callback: () => void) => {
-    if (!isTyping && isTypingEnabled) {
+  const handleTyping = useCallback(() => {
+    if (!isTyping) {
       setIsTyping(true);
-      callback();
+      debouncedTypingStart();
     }
-  }, [isTyping, isTypingEnabled, setIsTyping]);
+  }, [isTyping, debouncedTypingStart]);
 
   // Handle message send (clear typing indicator)
   const handleMessageSent = useCallback(() => {
+    setIsTyping(false);
     sendTypingStop();
   }, [sendTypingStop]);
 
   return {
-    typingUsers: typingUsers.filter(user => user.userId !== socket?.auth?.userId),
+    typingUsers: typingUsers.filter(user => {
+      const auth = socket?.auth as { userId: string } | undefined;
+      return user.userId !== auth?.userId;
+    }),
     handleTyping,
-    handleMessageSent
+    handleMessageSent,
   };
 } 

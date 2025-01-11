@@ -1,72 +1,46 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useSocket } from '@/hooks/useSocket';
-import { Message, MessageDeliveryStatus } from '@/types/message';
+import type { Message } from '@/types/message';
 
 export function useMessages(channelId: string) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const { socket } = useSocket();
+  const { socket, isConnected } = useSocket();
 
-  const sendMessage = useCallback(async (content: string) => {
-    if (!socket) {
-      throw new Error('Socket not initialized');
-    }
-
-    const tempMessage: Message = {
-      content,
-      channelId,
-      userId: socket.auth.userId,
-      createdAt: new Date().toISOString(),
-      deliveryStatus: MessageDeliveryStatus.SENDING
+  useEffect(() => {
+    const fetchMessages = async () => {
+      try {
+        const response = await fetch(`/api/channels/${channelId}/messages`);
+        if (!response.ok) throw new Error('Failed to fetch messages');
+        const data = await response.json();
+        setMessages(data);
+      } catch (error) {
+        console.error('Error fetching messages:', error);
+      } finally {
+        setIsLoading(false);
+      }
     };
 
-    setMessages(prev => [...prev, tempMessage]);
+    if (channelId) {
+      fetchMessages();
+    }
+  }, [channelId]);
+
+  const sendMessage = useCallback(async (content: string) => {
+    if (!socket || !isConnected || !channelId) return;
 
     try {
-      const response = await socket.emit('message:send', {
-        content,
-        channelId
-      });
-
-      if (!response.success) {
-        throw new Error(response.error || 'Failed to send message');
-      }
-
-      setMessages(prev => prev.map(msg => 
-        msg === tempMessage ? {
-          ...msg,
-          id: response.messageId,
-          deliveryStatus: MessageDeliveryStatus.SENT
-        } : msg
-      ));
-
-      return response;
+      socket.emit('message:send', { channelId, content });
     } catch (error) {
-      setMessages(prev => prev.filter(msg => msg !== tempMessage));
-      throw error;
+      console.error('Error sending message:', error);
     }
-  }, [socket, channelId]);
-
-  const retryMessage = useCallback(async (messageId: string) => {
-    const message = messages.find(m => m.id === messageId);
-    if (!message) {
-      throw new Error('Message not found');
-    }
-
-    try {
-      await sendMessage(message.content);
-      setMessages(prev => prev.filter(m => m.id !== messageId));
-    } catch (error) {
-      throw error;
-    }
-  }, [messages, sendMessage]);
+  }, [socket, isConnected, channelId]);
 
   return {
     messages,
     isLoading,
-    sendMessage,
-    retryMessage
+    sendMessage
   };
 } 

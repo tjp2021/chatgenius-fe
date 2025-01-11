@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function ChannelsPage() {
   const router = useRouter();
-  const { userId, getToken, sessionId } = useAuth();
+  const { userId, getToken } = useAuth();
   const { user, isLoaded, isSignedIn } = useUser();
 
   useEffect(() => {

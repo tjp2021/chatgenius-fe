@@ -1,19 +1,18 @@
 import { useEffect, useCallback } from 'react';
 import { useSocket } from '@/providers/socket-provider';
 import { useQueryClient } from '@tanstack/react-query';
-import { SocketEvent } from '@/lib/socket-config';
-import { MessageDeliveryStatus, MessageReadReceipt } from '@/types/channel';
+import { MessageEvent, MessageDeliveryStatus, MessageReadReceipt } from '@/types/message';
 import { messageKeys } from '@/lib/query-keys';
 
-interface Message {
+interface MessageData {
   id: string;
   channelId: string;
   deliveryStatus: MessageDeliveryStatus;
   readBy: MessageReadReceipt[];
 }
 
-interface MessageResponse {
-  messages: Message[];
+interface MessageListData {
+  messages: MessageData[];
 }
 
 export function useMessageStatus(channelId: string) {
@@ -24,7 +23,7 @@ export function useMessageStatus(channelId: string) {
   const markAsRead = useCallback(async (messageId: string) => {
     if (!socket || !isConnected) return;
 
-    socket.emit(SocketEvent.MESSAGE_READ, {
+    socket.emit(MessageEvent.READ, {
       messageId,
       channelId
     });
@@ -43,7 +42,7 @@ export function useMessageStatus(channelId: string) {
       if (data.channelId !== channelId) return;
 
       // Update message delivery status in cache
-      queryClient.setQueriesData<MessageResponse>(
+      queryClient.setQueriesData<MessageListData>(
         { queryKey: messageKeys.list(channelId) },
         (old) => {
           if (!old) return old;
@@ -70,7 +69,7 @@ export function useMessageStatus(channelId: string) {
       if (data.channelId !== channelId) return;
 
       // Update message read receipts in cache
-      queryClient.setQueriesData<MessageResponse>(
+      queryClient.setQueriesData<MessageListData>(
         { queryKey: messageKeys.list(channelId) },
         (old) => {
           if (!old) return old;
@@ -94,12 +93,12 @@ export function useMessageStatus(channelId: string) {
       );
     };
 
-    socket.on(SocketEvent.MESSAGE_DELIVERED, handleDeliveryUpdate);
-    socket.on(SocketEvent.MESSAGE_READ, handleReadReceipt);
+    socket.on(MessageEvent.DELIVERED, handleDeliveryUpdate);
+    socket.on(MessageEvent.READ, handleReadReceipt);
 
     return () => {
-      socket.off(SocketEvent.MESSAGE_DELIVERED, handleDeliveryUpdate);
-      socket.off(SocketEvent.MESSAGE_READ, handleReadReceipt);
+      socket.off(MessageEvent.DELIVERED, handleDeliveryUpdate);
+      socket.off(MessageEvent.READ, handleReadReceipt);
     };
   }, [socket, isConnected, channelId, queryClient]);
 

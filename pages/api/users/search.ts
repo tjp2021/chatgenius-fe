@@ -4,7 +4,7 @@ import { SearchUsersResponse } from '@/types/user';
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse<SearchUsersResponse | { error: string }>
 ) {
   const { userId } = await getAuth(req);  // Use getAuth helper from Clerk
 

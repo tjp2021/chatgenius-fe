@@ -122,23 +122,24 @@ export async function GET(
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       }
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('[Messages API] Error details:', {
       error,
-      message: error.message,
-      stack: error.stack
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
     });
-    
-    return NextResponse.json(
-      { error: 'Internal Server Error', message: error.message || 'Failed to fetch messages' },
-      { 
-        status: 500,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        }
+
+    return new Response(JSON.stringify({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error'
+    }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       }
-    );
+    });
   }
 } 

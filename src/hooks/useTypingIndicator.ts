@@ -1,27 +1,27 @@
 import { useEffect, useCallback, useState } from 'react';
 import { useSocket } from '@/providers/socket-provider';
-import { SocketEvent } from '@/lib/socket-config';
-import { TypingUser } from '@/types/channel';
+import type { TypingIndicator } from '@/types/message';
 import debounce from 'lodash/debounce';
 
 export function useTypingIndicator(channelId: string) {
   const { socket, isConnected } = useSocket();
-  const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
+  const [typingUsers, setTypingUsers] = useState<TypingIndicator[]>([]);
 
   // Debounced stop typing function
-  const debouncedStopTyping = useCallback(
-    debounce(() => {
+  const debouncedStopTyping = useCallback(() => {
+    const stopTypingFn = () => {
       if (socket && isConnected) {
-        socket.emit(SocketEvent.TYPING_STOP, { channelId });
+        socket.emit('typing:stop', { channelId });
       }
-    }, 1000),
-    [socket, isConnected, channelId]
-  );
+    };
+
+    return debounce(stopTypingFn, 1000);
+  }, [socket, isConnected, channelId])();
 
   // Start typing function
   const startTyping = useCallback(() => {
     if (socket && isConnected) {
-      socket.emit(SocketEvent.TYPING_START, { channelId });
+      socket.emit('typing:start', { channelId });
     }
     debouncedStopTyping();
   }, [socket, isConnected, channelId, debouncedStopTyping]);
@@ -30,7 +30,7 @@ export function useTypingIndicator(channelId: string) {
   useEffect(() => {
     if (!socket || !isConnected) return;
 
-    const handleTypingUpdate = (data: { channelId: string; typingUser: TypingUser }) => {
+    const handleTypingUpdate = (data: { channelId: string; typingUser: TypingIndicator }) => {
       if (data.channelId !== channelId) return;
 
       setTypingUsers(prev => {
@@ -52,12 +52,12 @@ export function useTypingIndicator(channelId: string) {
       setTypingUsers(prev => prev.filter(u => u.userId !== data.userId));
     };
 
-    socket.on(SocketEvent.TYPING_UPDATE, handleTypingUpdate);
-    socket.on(SocketEvent.TYPING_STOP, handleTypingStop);
+    socket.on('typing:start', handleTypingUpdate);
+    socket.on('typing:stop', handleTypingStop);
 
     return () => {
-      socket.off(SocketEvent.TYPING_UPDATE, handleTypingUpdate);
-      socket.off(SocketEvent.TYPING_STOP, handleTypingStop);
+      socket.off('typing:start', handleTypingUpdate);
+      socket.off('typing:stop', handleTypingStop);
       debouncedStopTyping.cancel();
     };
   }, [socket, isConnected, channelId, debouncedStopTyping]);

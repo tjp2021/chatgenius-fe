@@ -1,60 +1,47 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useUser } from '@clerk/nextjs';
 import { useMessages } from '@/hooks/use-messages';
-import { MessageItem } from '@/components/chat/message-item';
-import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { MessageItem } from './message-item';
+import { Loader2 } from 'lucide-react';
 
 interface MessageListProps {
   channelId: string;
 }
 
 export function MessageList({ channelId }: MessageListProps) {
-  const { messages, isLoading } = useMessages(channelId);
-  const { user } = useUser();
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  console.log('[Message List] Rendering message list', {
-    channelId,
-    messageCount: messages.length,
-    messages,
-    isLoading,
-    userId: user?.id
-  });
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { messages, isLoading, error } = useMessages(channelId);
 
   useEffect(() => {
-    console.log('[Message List] Messages updated', {
-      messageCount: messages.length,
-      messages
-    });
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   if (isLoading) {
-    console.log('[Message List] Showing loading state');
     return (
-      <div className="flex h-full items-center justify-center">
-        <LoadingSpinner />
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="h-7 w-7 text-muted-foreground animate-spin" />
       </div>
     );
   }
 
-  console.log('[Message List] Rendering messages:', messages);
+  if (error) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-destructive">Failed to load messages</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col space-y-4 p-4">
-      {messages.map((message) => {
-        console.log('[Message List] Rendering message:', message);
-        return (
-          <MessageItem
-            key={message.id || message.tempId}
-            message={message}
-            isOwnMessage={message.userId === user?.id}
-          />
-        );
-      })}
-      <div ref={bottomRef} />
+    <div className="flex-1 flex flex-col gap-4 p-4">
+      {messages.map((message) => (
+        <MessageItem
+          key={message.id}
+          message={message}
+        />
+      ))}
+      <div ref={messagesEndRef} />
     </div>
   );
 } 

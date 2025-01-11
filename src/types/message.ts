@@ -1,10 +1,11 @@
-import type { User } from '@/types/user';
-
 export enum MessageEvent {
   NEW = 'NEW',
+  SEND = 'SEND',
   SENT = 'SENT',
   DELIVERED = 'DELIVERED',
-  READ = 'READ'
+  READ = 'READ',
+  TYPING_START = 'TYPING_START',
+  TYPING_STOP = 'TYPING_STOP'
 }
 
 export enum MessageDeliveryStatus {
@@ -23,13 +24,15 @@ export interface MessageUser {
 }
 
 export interface Message {
-  id: string;
+  id?: string;
+  tempId?: string;
   content: string;
   channelId: string;
   userId: string;
   createdAt: string;
-  updatedAt: string;
-  status: MessageEvent;
+  updatedAt?: string;
+  status?: MessageEvent;
+  deliveryStatus?: MessageDeliveryStatus;
   user?: {
     id: string;
     name: string;
@@ -45,11 +48,16 @@ export interface MessagePayload {
   parentId?: string;
 }
 
-export interface ReadReceipt {
+export interface MessageReadReceipt {
   messageId: string;
   userId: string;
   channelId: string;
   readAt: string;
+  user?: {
+    id: string;
+    name: string;
+    imageUrl?: string;
+  };
 }
 
 export interface MessageResponse {
@@ -68,4 +76,11 @@ export interface MessageMutationResponse {
   success: boolean;
   message?: Message;
   error?: string;
+}
+
+export interface TypingIndicator {
+  userId: string;
+  username: string;
+  channelId: string;
+  timestamp: number;
 } 

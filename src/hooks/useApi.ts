@@ -1,61 +1,73 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
-import axios from 'axios';
-import type { Channel, ChannelMutationResponse } from '@/types/channel';
 
-interface APIResponse<T> {
-  data: T;
-  success: boolean;
-  error?: string;
-}
-
-interface ChannelLeaveResponse {
-  nextChannel: {
-    channelId: string;
-    type: 'PUBLIC' | 'PRIVATE' | 'DM';
-    lastViewedAt: string;
-    unreadState: boolean;
-  } | null;
-}
-
-export const useApi = () => {
+export function useApi() {
   const { getToken } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
 
-  const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
-    const token = await getToken();
-    const headers = {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    };
-
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
+  const joinChannel = async (channelId: string) => {
+    setIsLoading(true);
+    try {
+      const token = await getToken();
+      const response = await fetch(`/api/channels/${channelId}/join`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!response.ok) throw new Error('Failed to join channel');
+      return await response.json();
+    } finally {
+      setIsLoading(false);
     }
+  };
 
-    return response.json();
+  const leaveChannel = async (channelId: string) => {
+    setIsLoading(true);
+    try {
+      const token = await getToken();
+      const response = await fetch(`/api/channels/${channelId}/leave`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!response.ok) throw new Error('Failed to leave channel');
+      return await response.json();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const createChannel = async (data: {
+    name: string;
+    description?: string;
+    type: string;
+  }) => {
+    setIsLoading(true);
+    try {
+      const token = await getToken();
+      const response = await fetch('/api/channels', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+      if (!response.ok) throw new Error('Failed to create channel');
+      return await response.json();
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return {
-    getChannels: async () => {
-      return fetchWithAuth(`${process.env.NEXT_PUBLIC_API_URL}/channels`);
-    },
-    joinChannel: async (channelId: string) => {
-      return fetchWithAuth(`${process.env.NEXT_PUBLIC_API_URL}/channels/${channelId}/join`, {
-        method: 'POST',
-      });
-    },
-    leaveChannel: async (channelId: string) => {
-      return fetchWithAuth(`${process.env.NEXT_PUBLIC_API_URL}/channels/${channelId}/leave`, {
-        method: 'POST',
-      });
-    },
+    joinChannel,
+    leaveChannel,
+    createChannel,
+    isLoading
   };
-};
+}

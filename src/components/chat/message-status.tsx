@@ -1,4 +1,4 @@
-import { MessageDeliveryStatus, MessageReadReceipt } from '@/types/channel';
+import { MessageDeliveryStatus, MessageReadReceipt } from '@/types/message';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Check, CheckCheck } from 'lucide-react';
 import { format } from 'date-fns';
@@ -55,7 +55,7 @@ export function MessageStatus({ status, readBy, showReadReceipts = true }: Messa
                     <div className="space-y-1">
                       {readBy.map(receipt => (
                         <div key={receipt.userId} className="flex items-center gap-2 text-sm">
-                          <span>{receipt.user.name}</span>
+                          <span>{receipt.user?.name || 'Unknown User'}</span>
                           <span className="text-xs text-muted-foreground">
                             {format(new Date(receipt.readAt), 'HH:mm')}
                           </span>

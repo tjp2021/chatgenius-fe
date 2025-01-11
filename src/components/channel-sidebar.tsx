@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useSocket } from '@/hooks/useSocket';
+import { useSocket } from '@/providers/socket-provider';
 import { useChannelContext } from '@/contexts/channel-context';
 import { Channel } from '@/types/channel';
 import { UserAvatar } from './user-avatar';
@@ -12,8 +12,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 
 export function ChannelSidebar() {
   const [channelToLeave, setChannelToLeave] = useState<Channel | null>(null);
-  const { channels, isLoading: isLoadingChannels, joinChannel, leaveChannel } = useChannelContext();
-  const { isConnected, isConnecting } = useSocket();
+  const { channels, isLoading: isLoadingChannels, leaveChannel } = useChannelContext();
+  const { isConnected } = useSocket();
+
   const [isOpen, setIsOpen] = useState(false);
 
   const handleLeaveChannel = async () => {
@@ -36,7 +37,7 @@ export function ChannelSidebar() {
             variant="outline"
             size="sm"
             onClick={() => setIsOpen(true)}
-            disabled={!isConnected || isConnecting}
+            disabled={!isConnected}
           >
             Browse
           </Button>
@@ -44,10 +45,10 @@ export function ChannelSidebar() {
         <div className="flex items-center gap-2">
           <div className={cn(
             "w-2 h-2 rounded-full",
-            isConnecting ? "bg-yellow-500" : isConnected ? "bg-green-500" : "bg-red-500"
+            isConnected ? "bg-green-500" : "bg-red-500"
           )} />
           <span className="text-sm text-muted-foreground">
-            {isConnecting ? "Connecting..." : isConnected ? "Connected" : "Disconnected"}
+            {isConnected ? "Connected" : "Disconnected"}
           </span>
         </div>
       </div>
@@ -86,7 +87,7 @@ export function ChannelSidebar() {
                 size="sm"
                 onClick={() => setChannelToLeave(channel)}
                 className="opacity-0 group-hover:opacity-100"
-                disabled={!isConnected || isConnecting}
+                disabled={!isConnected}
               >
                 Leave
               </Button>
@@ -105,7 +106,7 @@ export function ChannelSidebar() {
           <DialogHeader>
             <DialogTitle>Leave Channel</DialogTitle>
             <DialogDescription>
-              Are you sure you want to leave {channelToLeave?.name}? You'll need to be invited back to rejoin.
+              Are you sure you want to leave {channelToLeave?.name}? You&apos;ll need to be invited back to rejoin.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

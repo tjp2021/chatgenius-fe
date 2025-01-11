@@ -1,29 +1,33 @@
-import { /* React, useCallback */ } from 'react';
-import { useChannelContext } from '../contexts/channel-context';
-import { useToast } from '../components/ui/use-toast';
-import { Channel } from '../types/channel';
+import { Channel } from '@/types/channel';
+import { UserAvatar } from '@/components/user-avatar';
+import { cn } from '@/lib/utils';
 
-const ChannelItem = ({ channel }: { channel: Channel }) => {
-  const { leaveChannel } = useChannelContext();
-  const { toast } = useToast();
+interface ChannelItemProps {
+  channel: Channel;
+  isSelected?: boolean;
+  onClick?: () => void;
+}
 
-  /* const handleLeave = async () => {
-    try {
-      await leaveChannel(channel.id);
-      toast({
-        title: "Success",
-        description: `Left channel ${channel.name}`,
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to leave channel",
-        variant: "destructive",
-      });
-    }
-  }; */
-
-  // ... rest of component
-};
-
-export default ChannelItem; 
+export function ChannelItem({ channel, isSelected, onClick }: ChannelItemProps) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "w-full flex items-center gap-2 rounded-lg p-2 hover:bg-accent",
+        isSelected && "bg-accent"
+      )}
+    >
+      {channel.members?.[0] && (
+        <UserAvatar userId={channel.members[0].userId} />
+      )}
+      <div className="flex-1 text-left truncate">
+        <p className="font-medium truncate">{channel.name}</p>
+        {channel.description && (
+          <p className="text-sm text-muted-foreground truncate">
+            {channel.description}
+          </p>
+        )}
+      </div>
+    </button>
+  );
+} 

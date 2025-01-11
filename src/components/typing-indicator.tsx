@@ -22,9 +22,9 @@ export function TypingIndicatorDisplay({
       className
     )}>
       {typingUsers.length === 1 ? (
-        <p>{typingUsers[0].userId} is typing...</p>
+        <p>{typingUsers[0].username} is typing...</p>
       ) : typingUsers.length === 2 ? (
-        <p>{typingUsers[0].userId} and {typingUsers[1].userId} are typing...</p>
+        <p>{typingUsers[0].username} and {typingUsers[1].username} are typing...</p>
       ) : (
         <p>Several people are typing...</p>
       )}

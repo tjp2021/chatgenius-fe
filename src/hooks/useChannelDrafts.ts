@@ -1,88 +1,40 @@
 'use client';
 
-import { /* useState, */ useCallback, useEffect } from 'react';
-import { useLocalStorage } from './use-local-storage';
+import { useState } from 'react';
 
 interface ChannelDraft {
-  channelId: string;
   content: string;
-  lastUpdated: number;
+  lastUpdated: string;
 }
 
-interface UseChannelDrafts {
-  getDraft: (channelId: string) => string;
-  saveDraft: (channelId: string, content: string) => void;
-  clearDraft: (channelId: string) => void;
-  hasDraft: (channelId: string) => boolean;
-}
+export function useChannelDrafts() {
+  const [drafts, setDrafts] = useState<Record<string, ChannelDraft>>({});
 
-const DRAFT_STORAGE_KEY = 'channel_drafts';
-const MAX_DRAFT_AGE_DAYS = 7;
-const MAX_DRAFT_SIZE = 10000; // 10KB limit
-
-interface DraftActions {
-  saveDraft: (channelId: string, content: string) => void;
-  getDraft: (channelId: string) => string | null;
-  clearDraft: (channelId: string) => void;
-}
-
-export function useChannelDrafts(): UseChannelDrafts {
-  const [drafts, setDrafts] = useLocalStorage<ChannelDraft[]>(DRAFT_STORAGE_KEY, []);
-
-  // Clean up old drafts on mount
-  useEffect(() => {
-    const now = Date.now();
-    const maxAge = MAX_DRAFT_AGE_DAYS * 24 * 60 * 60 * 1000;
-    const validDrafts = drafts.filter(
-      (draft: ChannelDraft) => now - draft.lastUpdated < maxAge
-    );
-    
-    if (validDrafts.length !== drafts.length) {
-      setDrafts(validDrafts);
-    }
-  }, [drafts, setDrafts]);
-
-  const getDraft = useCallback((channelId: string): string => {
-    const draft = drafts.find((d: ChannelDraft) => d.channelId === channelId);
-    return draft?.content || '';
-  }, [drafts]);
-
-  const saveDraft = useCallback((channelId: string, content: string) => {
-    if (content.length > MAX_DRAFT_SIZE) {
-      console.warn('Draft content exceeds size limit');
-      content = content.slice(0, MAX_DRAFT_SIZE);
-    }
-
-    setDrafts((prev: ChannelDraft[]) => {
-      const existing = prev.findIndex((d: ChannelDraft) => d.channelId === channelId);
-      const newDraft: ChannelDraft = {
-        channelId,
+  const saveDraft = (channelId: string, content: string) => {
+    setDrafts(prev => ({
+      ...prev,
+      [channelId]: {
         content,
-        lastUpdated: Date.now()
-      };
-
-      if (existing >= 0) {
-        const updated = [...prev];
-        updated[existing] = newDraft;
-        return updated;
+        lastUpdated: new Date().toISOString()
       }
+    }));
+  };
 
-      return [...prev, newDraft];
+  const getDraft = (channelId: string) => {
+    return drafts[channelId]?.content || '';
+  };
+
+  const clearDraft = (channelId: string) => {
+    setDrafts(prev => {
+      const newDrafts = { ...prev };
+      delete newDrafts[channelId];
+      return newDrafts;
     });
-  }, [setDrafts]);
-
-  const clearDraft = useCallback((channelId: string) => {
-    setDrafts((prev: ChannelDraft[]) => prev.filter((d: ChannelDraft) => d.channelId !== channelId));
-  }, [setDrafts]);
-
-  const hasDraft = useCallback((channelId: string): boolean => {
-    return drafts.some((d: ChannelDraft) => d.channelId === channelId && d.content.length > 0);
-  }, [drafts]);
+  };
 
   return {
-    getDraft,
     saveDraft,
-    clearDraft,
-    hasDraft
+    getDraft,
+    clearDraft
   };
 } 

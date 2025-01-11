@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Icons } from '@/components/ui/icons';
 import { useSocketMessages } from '@/hooks/use-socket-messages';
-import { TypingIndicator } from '@/components/chat/typing-indicator';
 import { cn } from '@/lib/utils';
 
 interface MessageInputProps {
@@ -19,27 +18,11 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
 
-  const {
-    send: sendMessage,
-    startTyping,
-    stopTyping,
-    typingUsers,
-    isLoading,
-    error
-  } = useSocketMessages({
-    channelId,
-    onNewMessage: (message) => {
-      // Auto-focus input after receiving a message
-      if (message.channelId === channelId) {
-        textareaRef.current?.focus();
-      }
-    }
-  });
+  const { sendMessage } = useSocketMessages(channelId);
 
   const handleTyping = useCallback(() => {
     if (!isTyping) {
       setIsTyping(true);
-      startTyping();
     }
 
     // Clear existing timeout
@@ -50,9 +33,8 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
     // Set new timeout
     typingTimeoutRef.current = setTimeout(() => {
       setIsTyping(false);
-      stopTyping();
     }, 2000);
-  }, [isTyping, startTyping, stopTyping]);
+  }, [isTyping]);
 
   // Cleanup on unmount or channel change
   useEffect(() => {
@@ -60,11 +42,8 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
-      if (isTyping) {
-        stopTyping();
-      }
     };
-  }, [isTyping, stopTyping]);
+  }, []);
 
   const handleSubmit = async () => {
     if (!content.trim()) return;
@@ -73,7 +52,6 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
       // Stop typing indicator before sending
       if (isTyping) {
         setIsTyping(false);
-        stopTyping();
       }
 
       await sendMessage(content);
@@ -93,10 +71,6 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
 
   return (
     <div className={cn("space-y-2", className)}>
-      <TypingIndicator 
-        userIds={typingUsers} 
-        className="px-4"
-      />
       <form 
         onSubmit={(e) => {
           e.preventDefault();
@@ -112,27 +86,21 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
             setContent(newContent);
             if (newContent.trim()) {
               handleTyping();
-            } else if (isTyping) {
-              setIsTyping(false);
-              stopTyping();
             }
           }}
           onKeyDown={handleKeyDown}
           onBlur={() => {
             if (isTyping) {
               setIsTyping(false);
-              stopTyping();
             }
           }}
           placeholder="Type a message..."
           className="min-h-[60px] resize-none"
-          disabled={isLoading}
-          aria-invalid={error ? 'true' : 'false'}
-          aria-errormessage={error?.message}
+          aria-label="Message input"
         />
         <Button 
           type="submit" 
-          disabled={!content.trim() || isLoading}
+          disabled={!content.trim()}
           aria-label="Send message"
         >
           <Icons.send className="h-4 w-4" />

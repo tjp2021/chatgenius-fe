@@ -1,11 +1,8 @@
 'use client';
 
-import { useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { useChannelContext } from '@/contexts/channel-context';
+import { Channel } from '@/types/channel';
 import { UserAvatar } from '@/components/user-avatar';
 import { cn } from '@/lib/utils';
-import { Channel } from '@/types/channel';
 
 interface ChannelListProps {
   channels: Channel[];

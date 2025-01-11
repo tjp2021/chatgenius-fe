@@ -26,10 +26,10 @@ const ChannelContext = createContext<ChannelContextType | undefined>(undefined);
 export function ChannelProvider({ children }: { children: React.ReactNode }) {
   const { userId } = useAuth();
   const { socket } = useSocket();
-  const { getChannels, joinChannel: apiJoinChannel, leaveChannel: apiLeaveChannel } = useApi();
+  const { joinChannel, leaveChannel } = useApi();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   const refreshChannels = async () => {
@@ -48,43 +48,6 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
       setError(error as Error);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const joinChannel = async (channelId: string) => {
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels/${channelId}/join`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${await auth().getToken()}`
-        }
-      });
-      if (!response.ok) throw new Error('Failed to join channel');
-      await refreshChannels();
-    } catch (error) {
-      console.error('Error joining channel:', error);
-      setError(error as Error);
-      throw error;
-    }
-  };
-
-  const leaveChannel = async (channelId: string) => {
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels/${channelId}/leave`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${await auth().getToken()}`
-        }
-      });
-      if (!response.ok) throw new Error('Failed to leave channel');
-      await refreshChannels();
-      if (selectedChannel?.id === channelId) {
-        setSelectedChannel(null);
-      }
-    } catch (error) {
-      console.error('Error leaving channel:', error);
-      setError(error as Error);
-      throw error;
     }
   };
 
