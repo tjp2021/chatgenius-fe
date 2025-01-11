@@ -19,6 +19,7 @@ interface CustomSocket extends Omit<Socket, 'emit'> {
     userId: string;
   };
   emit: SocketEmit;
+  isConnected: boolean;
 }
 
 interface SocketConfig {
@@ -30,6 +31,7 @@ export function useSocket(config?: SocketConfig) {
   const { getToken, userId } = useAuth();
   const [socket, setSocket] = useState<CustomSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const socketRef = useRef<CustomSocket | null>(null);
 
   const initSocket = useCallback(async () => {
@@ -56,23 +58,29 @@ export function useSocket(config?: SocketConfig) {
 
       customSocket.on('connect', () => {
         setIsConnected(true);
+        setIsConnecting(false);
       });
 
       customSocket.on('disconnect', () => {
         setIsConnected(false);
+        setIsConnecting(false);
       });
 
       return customSocket;
     } catch (error) {
+      setIsConnecting(false);
       return null;
     }
   }, [config, getToken, userId]);
 
   const connect = useCallback(async () => {
+    setIsConnecting(true);
     const socketInstance = await initSocket();
     if (socketInstance) {
       socketRef.current = socketInstance;
       setSocket(socketInstance);
+    } else {
+      setIsConnecting(false);
     }
   }, [initSocket]);
 
@@ -82,6 +90,7 @@ export function useSocket(config?: SocketConfig) {
       socketRef.current = null;
       setSocket(null);
       setIsConnected(false);
+      setIsConnecting(false);
     }
   }, []);
 
@@ -94,6 +103,7 @@ export function useSocket(config?: SocketConfig) {
 
   return {
     socket,
-    isConnected
+    isConnected,
+    isConnecting
   };
 } 
