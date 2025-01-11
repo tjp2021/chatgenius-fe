@@ -24,15 +24,18 @@ interface SocketResponse<T> {
 }
 
 interface SocketErrorResponse {
-  /* error: string; */
+  code: string;
+  message: string;
 }
 
 interface SocketDisconnectResponse {
-  /* error: string; */
+  reason: string;
+  wasClean: boolean;
 }
 
 interface SocketReconnectResponse {
-  /* reason: string; */
+  attempt: number;
+  delay: number;
 }
 
 export class ChatSocketClient {

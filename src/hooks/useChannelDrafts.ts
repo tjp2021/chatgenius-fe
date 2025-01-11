@@ -21,11 +21,9 @@ const MAX_DRAFT_AGE_DAYS = 7;
 const MAX_DRAFT_SIZE = 10000; // 10KB limit
 
 interface DraftActions {
-  /* channelId: string;
-  content: string;
-  channelId: string;
-  content: string;
-  channelId: string; */
+  saveDraft: (channelId: string, content: string) => void;
+  getDraft: (channelId: string) => string | null;
+  clearDraft: (channelId: string) => void;
 }
 
 export function useChannelDrafts(): UseChannelDrafts {

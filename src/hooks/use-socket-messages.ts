@@ -22,11 +22,9 @@ interface SocketMessagesState {
 }
 
 interface SocketMessageEvents {
-  /* message: (message: Message) => void;
-  messageDelivered: (messageId: string) => void;
-  messageRead: (messageId: string) => void;
-  userTypingStart: (userId: string) => void;
-  userTypingStop: (userId: string) => void; */
+  'message:new': (message: Message) => void;
+  'message:delivered': (messageId: string) => void;
+  'message:read': (messageId: string) => void;
 }
 
 /* const onNewMessage = (callback: (message: Message) => void) => {

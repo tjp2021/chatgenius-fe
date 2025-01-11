@@ -5,43 +5,37 @@ import { useRouter } from 'next/navigation';
 import { useChannelContext } from '@/contexts/channel-context';
 import { UserAvatar } from '@/components/user-avatar';
 import { cn } from '@/lib/utils';
+import { Channel } from '@/types/channel';
 
-export function ChannelList() {
-  const router = useRouter();
-  const { channels, isLoading } = useChannelContext();
+interface ChannelListProps {
+  channels: Channel[];
+  selectedChannelId?: string;
+  onChannelSelect: (channelId: string) => void;
+}
 
-  const handleChannelClick = useCallback((channelId: string) => {
-    router.push(`/channels/${channelId}`);
-  }, [router]);
-
-  if (isLoading) {
+export function ChannelList({ channels, selectedChannelId, onChannelSelect }: ChannelListProps) {
+  if (!channels.length) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
-  }
-
-  if (channels.length === 0) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <p className="text-sm text-muted-foreground">No channels available</p>
+      <div className="flex items-center justify-center h-full">
+        <p className="text-muted-foreground">No channels available</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-2 px-2">
+    <div className="space-y-2">
       {channels.map((channel) => (
         <button
           key={channel.id}
-          onClick={() => handleChannelClick(channel.id)}
+          onClick={() => onChannelSelect(channel.id)}
           className={cn(
-            "w-full flex items-center gap-3 p-2 rounded-lg hover:bg-accent transition-colors",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            "w-full flex items-center gap-2 rounded-lg p-2 hover:bg-accent",
+            selectedChannelId === channel.id && "bg-accent"
           )}
         >
-          <UserAvatar userId={channel.ownerId} />
+          {channel.members?.[0] && (
+            <UserAvatar userId={channel.members[0].userId} />
+          )}
           <div className="flex-1 text-left truncate">
             <p className="font-medium truncate">{channel.name}</p>
             {channel.description && (

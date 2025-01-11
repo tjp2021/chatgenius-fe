@@ -1,6 +1,17 @@
+import { Server as ServerIO } from 'socket.io';
 import { Server as NetServer } from 'http';
 import { NextApiRequest, NextApiResponse } from 'next';
-import { Server as ServerIO } from 'socket.io';
+import { Socket } from 'net';
+
+interface SocketServer extends Socket {
+  server: NetServer & {
+    io?: ServerIO;
+  };
+}
+
+interface SocketWithIO extends NextApiResponse {
+  socket: SocketServer;
+}
 
 export const config = {
   api: {
@@ -8,31 +19,19 @@ export const config = {
   },
 };
 
-const ioHandler = (req: NextApiRequest, res: NextApiResponse) => {
+const ioHandler = (req: NextApiRequest, res: SocketWithIO) => {
   console.log('Socket handler called:', req.url);
   
   if (!res.socket.server.io) {
     console.log('Initializing socket server');
-    const httpServer = res.socket.server as any;
-    const io = new ServerIO(httpServer, {
+    const io = new ServerIO(res.socket.server, {
       path: '/api/socket/io',
       addTrailingSlash: false,
-      cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-      }
     });
-
-    io.on('connection', (socket) => {
-      console.log('Client connected:', socket.id);
-
-      socket.on('disconnect', () => {
-        console.log('Client disconnected:', socket.id);
-      });
-    });
-
+    
     res.socket.server.io = io;
   }
+
   res.end();
 };
 

@@ -1,19 +1,20 @@
 'use client';
 
-import { useAuth as useClerkAuth } from "@clerk/nextjs";
+import { useAuth as useClerkAuth, useUser } from '@clerk/nextjs';
 
-export const useAuth = () => {
-  const { getToken } = useClerkAuth();
+export function useAuth() {
+  const { getToken, userId, isLoaded } = useClerkAuth();
+  const { user } = useUser();
   
   return {
-    getToken: async () => {
-      try {
-        // Get token directly from Clerk's useAuth hook
-        return await getToken();
-      } catch (error) {
-        console.error('Error getting token:', error);
-        throw error;
-      }
-    }
+    isLoading: !isLoaded,
+    isAuthenticated: !!userId && isLoaded,
+    user: user ? {
+      id: user.id,
+      email: user.emailAddresses[0]?.emailAddress,
+      name: user.fullName,
+      imageUrl: user.imageUrl
+    } : null,
+    getToken
   };
-}; 
+} 

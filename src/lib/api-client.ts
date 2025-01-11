@@ -1,40 +1,82 @@
 'use client';
 
-import { /* useAuth */ } from '@clerk/nextjs';
-import { SearchUsersResponse } from "@/types/user";
+import { auth } from '@clerk/nextjs';
 
-class ApiClient {
-  private static instance: ApiClient;
+export class ApiClient {
   private baseUrl: string;
+  private defaultHeaders: HeadersInit;
 
-  private constructor() {
-    this.baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
+  constructor(baseUrl: string) {
+    this.baseUrl = baseUrl;
+    this.defaultHeaders = {
+      'Content-Type': 'application/json',
+    };
   }
 
-  public static getInstance(): ApiClient {
-    if (!ApiClient.instance) {
-      ApiClient.instance = new ApiClient();
-    }
-    return ApiClient.instance;
+  private async getAuthHeaders(): Promise<HeadersInit> {
+    const token = await auth().getToken();
+    return {
+      ...this.defaultHeaders,
+      Authorization: `Bearer ${token}`,
+    };
   }
 
-  async searchUsers(search: string, token: string, page: number = 1, limit: number = 10): Promise<SearchUsersResponse> {
-    const response = await fetch(
-      `${this.baseUrl}/api/users/search?search=${search}&page=${page}&limit=${limit}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+  async get<T>(path: string, params = {}, retries = 3, backoff = 1000) {
+    const queryString = new URLSearchParams(params).toString();
+    const url = `${this.baseUrl}${path}${queryString ? `?${queryString}` : ''}`;
+    const headers = await this.getAuthHeaders();
+
+    try {
+      const response = await fetch(url, { headers });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      return (await response.json()) as T;
+    } catch (error) {
+      if (retries > 0) {
+        await new Promise(resolve => setTimeout(resolve, backoff));
+        return this.get<T>(path, params, retries - 1, backoff * 2);
       }
-    );
-
-    if (!response.ok) {
-      throw new Error('Failed to search users');
+      throw error;
     }
+  }
 
-    return response.json();
+  async post<T>(path: string, body: unknown) {
+    const url = `${this.baseUrl}${path}`;
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return (await response.json()) as T;
+  }
+
+  async put<T>(path: string, body: unknown) {
+    const url = `${this.baseUrl}${path}`;
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return (await response.json()) as T;
+  }
+
+  async delete<T>(path: string) {
+    const url = `${this.baseUrl}${path}`;
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers,
+    });
+
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return (await response.json()) as T;
   }
 }
-
-export const apiClient = ApiClient.getInstance();

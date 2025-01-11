@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuth } from '@/hooks/useAuth';
-import { api } from '@/lib/api';
+import { searchUsers, getCurrentUser, updateUser } from '@/lib/api';
 import { useState } from 'react';
 
 export function ProtectedComponent() {
@@ -14,7 +14,7 @@ export function ProtectedComponent() {
 
     setIsUpdating(true);
     try {
-      await api.updateUser({
+      await updateUser({
         name: 'New Name',
       });
     } catch (error) {
@@ -28,7 +28,7 @@ export function ProtectedComponent() {
     setTestResult('Testing...');
     try {
       // Test GET request
-      const userData = await api.getCurrentUser();
+      const userData = await getCurrentUser();
       setTestResult('✅ API Authentication Success: ' + JSON.stringify(userData, null, 2));
     } catch (error) {
       setTestResult('❌ API Error: ' + (error instanceof Error ? error.message : String(error)));

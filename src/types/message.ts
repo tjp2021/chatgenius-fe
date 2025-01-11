@@ -1,33 +1,40 @@
 import type { User } from '@/types/user';
 
-export const MessageDeliveryStatus = {
-  SENDING: 'SENDING',
-  SENT: 'SENT',
-  DELIVERED: 'DELIVERED',
-  READ: 'READ',
-  FAILED: 'FAILED'
-} as const;
+export enum MessageEvent {
+  NEW = 'NEW',
+  SENT = 'SENT',
+  DELIVERED = 'DELIVERED',
+  READ = 'READ'
+}
 
-export type MessageDeliveryStatusType = typeof MessageDeliveryStatus[keyof typeof MessageDeliveryStatus];
+export enum MessageDeliveryStatus {
+  SENDING = 'SENDING',
+  SENT = 'SENT',
+  DELIVERED = 'DELIVERED',
+  READ = 'READ',
+  FAILED = 'FAILED'
+}
 
-export interface ReadReceipt {
-  userId: string;
-  readAt: string;
+export interface MessageUser {
+  id: string;
+  name: string;
+  username?: string;
+  imageUrl?: string;
 }
 
 export interface Message {
-  id?: string;
-  tempId?: string;
+  id: string;
   content: string;
   channelId: string;
   userId: string;
   createdAt: string;
-  updatedAt?: string;
-  deliveryStatus: MessageDeliveryStatusType;
-  user?: User;
-  parentId?: string;
-  readBy?: ReadReceipt[];
-  error?: string;
+  updatedAt: string;
+  status: MessageEvent;
+  user?: {
+    id: string;
+    name: string;
+    imageUrl?: string;
+  };
 }
 
 export interface MessagePayload {
@@ -38,14 +45,11 @@ export interface MessagePayload {
   parentId?: string;
 }
 
-export enum MessageEvent {
-  /* SEND = 'message:send',
-  SENT = 'message:sent',
-  NEW = 'message:new',
-  DELIVERED = 'message:delivered',
-  READ = 'message:read',
-  TYPING_START = 'typing:start',
-  TYPING_STOP = 'typing:stop' */
+export interface ReadReceipt {
+  messageId: string;
+  userId: string;
+  channelId: string;
+  readAt: string;
 }
 
 export interface MessageResponse {
@@ -54,13 +58,14 @@ export interface MessageResponse {
   error?: string;
 }
 
-export interface MessageDeliveredPayload {
-  messageId: string;
-  channelId: string;
+export interface MessageListResponse {
+  success: boolean;
+  data?: Message[];
+  error?: string;
 }
 
-export interface MessageReadPayload {
-  messageId: string;
-  channelId: string;
-  readAt: string;
+export interface MessageMutationResponse {
+  success: boolean;
+  message?: Message;
+  error?: string;
 } 

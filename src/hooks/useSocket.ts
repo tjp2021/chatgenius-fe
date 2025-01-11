@@ -1,182 +1,99 @@
 'use client';
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { io, Socket } from 'socket.io-client';
 import { useAuth } from '@clerk/nextjs';
-import { ChatSocketClient } from '@/lib/socket-client';
-import { socketLogger } from '@/lib/socket-logger';
+import { MessageResponse } from '@/types/message';
 
-export function useSocket() {
-  const socketRef = useRef<ChatSocketClient>();
+interface SocketResponse<T = any> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
+type SocketEmit = <T = any>(event: string, data: any) => Promise<SocketResponse<T>>;
+
+interface CustomSocket extends Omit<Socket, 'emit'> {
+  auth: {
+    token: string;
+    userId: string;
+  };
+  emit: SocketEmit;
+}
+
+interface SocketConfig {
+  url: string;
+  options?: any;
+}
+
+export function useSocket(config?: SocketConfig) {
   const { getToken, userId } = useAuth();
+  const [socket, setSocket] = useState<CustomSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-  /* const [reconnectAttempts, setReconnectAttempts] = useState(0); */
-
-  const MAX_RECONNECT_ATTEMPTS = 5;
-  const RECONNECT_INTERVAL = 5000;
-  const CONNECTION_TIMEOUT = 10000;
-
-  const handleAuthError = useCallback((error: Error) => {
-    socketLogger.error(error, { type: 'auth' });
-    setError(error);
-    setIsConnected(false);
-    // Trigger token refresh and reconnection
-    initSocket();
-  }, []);
-
-  const handleConnectionError = useCallback((error: Error) => {
-    socketLogger.error(error, { type: 'connection' });
-    setError(error);
-    setIsConnected(false);
-  }, []);
-
-  const handleReconnect = useCallback(() => {
-    socketLogger.info('Reconnected successfully');
-    setError(null);
-    setIsConnected(true);
-  }, []);
-
-  const handleDisconnect = useCallback((reason: string) => {
-    socketLogger.warn(`Disconnected: ${reason}`);
-    setIsConnected(false);
-    if (reason === 'io server disconnect') {
-      // Server initiated disconnect, attempt reconnect
-      initSocket();
-    }
-  }, []);
-
-  const establishInitialConnection = useCallback(async () => {
-    if (!socketRef.current) {
-      throw new Error('Socket not initialized');
-    }
-
-    return new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Connection timeout'));
-      }, CONNECTION_TIMEOUT);
-
-      const checkConnection = () => {
-        if (socketRef.current?.isConnected) {
-          clearTimeout(timeout);
-          setIsConnected(true);
-          resolve();
-        } else if (!socketRef.current) {
-          clearTimeout(timeout);
-          reject(new Error('Socket initialization failed'));
-        } else {
-          setTimeout(checkConnection, 100);
-        }
-      };
-
-      checkConnection();
-    });
-  }, []);
-
-  const handleInitializationError = useCallback((err: unknown) => {
-    const error = err instanceof Error ? err : new Error('Socket initialization failed');
-    socketLogger.error(error, { phase: 'initialization' });
-    setError(error);
-    setIsConnected(false);
-  }, []);
-
-  const getSocketUrl = useCallback((url: string) => {
-    try {
-      const parsedUrl = new URL(url);
-      // Force WebSocket protocol
-      return parsedUrl.protocol === 'https:' 
-        ? `wss://${parsedUrl.host}` 
-        : `ws://${parsedUrl.host}`;
-    } catch (error) {
-      throw new Error(`Invalid socket URL: ${url}`);
-    }
-  }, []);
+  const socketRef = useRef<CustomSocket | null>(null);
 
   const initSocket = useCallback(async () => {
     try {
-      setIsConnecting(true);
-      setError(null);
-
       const token = await getToken();
-      if (!token || !userId) {
-        throw new Error('Authentication not ready');
-      }
+      if (!token || !userId) return null;
 
-      await cleanupExistingSocket();
-
-      const rawUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'ws://localhost:3001';
-      const socketUrl = getSocketUrl(rawUrl);
-      socketLogger.debug('Initializing connection to:', socketUrl);
-
-      socketRef.current = new ChatSocketClient({
-        url: socketUrl,
-        token,
-        userId,
-        timeout: CONNECTION_TIMEOUT,
-        reconnectOptions: {
-          maxAttempts: MAX_RECONNECT_ATTEMPTS,
-          interval: RECONNECT_INTERVAL
-        },
-        onAuthError: handleAuthError,
-        onConnectionError: handleConnectionError,
-        onReconnect: handleReconnect,
-        onDisconnect: handleDisconnect
+      const socketInstance = io(config?.url || process.env.NEXT_PUBLIC_SOCKET_URL!, {
+        auth: { token, userId },
+        ...config?.options
       });
 
-      await establishInitialConnection();
-    } catch (err) {
-      handleInitializationError(err);
-    } finally {
-      setIsConnecting(false);
-    }
-  }, [userId, getToken, handleAuthError, handleConnectionError, handleReconnect, handleDisconnect, establishInitialConnection, handleInitializationError, getSocketUrl]);
+      // Create custom socket instance
+      const customSocket = socketInstance as unknown as CustomSocket;
+      customSocket.auth = { token, userId };
 
-  const cleanupExistingSocket = useCallback(async () => {
+      // Override emit to handle promises
+      const originalEmit = socketInstance.emit.bind(socketInstance);
+      customSocket.emit = (<T = any>(event: string, data: any) => {
+        return new Promise<SocketResponse<T>>((resolve) => {
+          originalEmit(event, data, resolve);
+        });
+      });
+
+      customSocket.on('connect', () => {
+        setIsConnected(true);
+      });
+
+      customSocket.on('disconnect', () => {
+        setIsConnected(false);
+      });
+
+      return customSocket;
+    } catch (error) {
+      return null;
+    }
+  }, [config, getToken, userId]);
+
+  const connect = useCallback(async () => {
+    const socketInstance = await initSocket();
+    if (socketInstance) {
+      socketRef.current = socketInstance;
+      setSocket(socketInstance);
+    }
+  }, [initSocket]);
+
+  const disconnect = useCallback(() => {
     if (socketRef.current) {
-      socketLogger.debug('Cleaning up existing connection');
-      await socketRef.current.disconnect();
-      socketRef.current = undefined;
+      socketRef.current.disconnect();
+      socketRef.current = null;
+      setSocket(null);
+      setIsConnected(false);
     }
   }, []);
 
   useEffect(() => {
-    initSocket();
-
+    connect();
     return () => {
-      cleanupExistingSocket();
-      setIsConnected(false);
-      setError(null);
+      disconnect();
     };
-  }, [userId, initSocket, cleanupExistingSocket]);
-
-  const sendMessage = useCallback(async (channelId: string, content: string) => {
-    if (!socketRef.current?.isConnected) {
-      throw new Error('Socket not connected');
-    }
-    return socketRef.current.sendMessage(channelId, content);
-  }, []);
-
-  const markAsRead = useCallback(async (messageId: string) => {
-    if (!socketRef.current?.isConnected) {
-      throw new Error('Socket not connected');
-    }
-    return socketRef.current.markAsRead(messageId);
-  }, []);
-
-  const confirmDelivery = useCallback(async (messageId: string) => {
-    if (!socketRef.current?.isConnected) {
-      throw new Error('Socket not connected');
-    }
-    return socketRef.current.confirmDelivery(messageId);
-  }, []);
+  }, [connect, disconnect]);
 
   return {
-    socket: socketRef.current,
-    isConnected,
-    isConnecting,
-    error,
-    sendMessage,
-    markAsRead,
-    confirmDelivery
+    socket,
+    isConnected
   };
 } 

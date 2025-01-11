@@ -17,10 +17,10 @@ interface MutationContext {
 }
 
 interface ChannelActions {
-  /* channelId: string;
-  type: string;
-  channelId: string;
-  channelId: string; */
+  refreshChannels: () => Promise<void>;
+  joinChannel: (channelId: string) => Promise<void>;
+  leaveChannel: (channelId: string) => Promise<void>;
+  selectChannel: (channelId: string) => void;
 }
 
 export function useChannels() {

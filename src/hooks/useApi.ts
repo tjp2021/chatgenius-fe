@@ -20,66 +20,42 @@ interface ChannelLeaveResponse {
   } | null;
 }
 
-export function useApi() {
+export const useApi = () => {
   const { getToken } = useAuth();
-  
-  const axiosInstance = axios.create({
-    baseURL: process.env.NEXT_PUBLIC_API_URL,
-  });
 
-  // Add auth token to requests
-  axiosInstance.interceptors.request.use(async (config) => {
-    try {
-      const token = await getToken();
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-    } catch (error) {
-      console.error('Failed to get auth token:', error);
-    }
-    return config;
-  });
+  const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
+    const token = await getToken();
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    };
 
-  const getChannels = useCallback(async () => {
-    try {
-      const response = await axiosInstance.get<APIResponse<Channel[]>>('/api/channels');
-      console.log('API Response:', response.data); // Debug log
-      return response.data;
-    } catch (error) {
-      console.error('Failed to fetch channels:', error);
-      throw error;
-    }
-  }, [axiosInstance]);
+    const response = await fetch(url, {
+      ...options,
+      headers,
+    });
 
-  const joinChannel = useCallback(async (channelId: string) => {
-    try {
-      const response = await axiosInstance.post<ChannelMutationResponse>(`/api/channels/${channelId}/join`);
-      return response.data;
-    } catch (error) {
-      console.error('Failed to join channel:', error);
-      throw error;
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
     }
-  }, [axiosInstance]);
 
-  const leaveChannel = useCallback(async (channelId: string, shouldDelete: boolean = false) => {
-    try {
-      const response = await axiosInstance.post<ChannelLeaveResponse>(
-        `/api/channels/${channelId}/leave`,
-        null,
-        {
-          params: { shouldDelete }
-        }
-      );
-      return response.data;
-    } catch (error) {
-      console.error('Failed to leave channel:', error);
-      throw error;
-    }
-  }, [axiosInstance]);
+    return response.json();
+  };
 
   return {
-    getChannels,
-    joinChannel,
-    leaveChannel
+    getChannels: async () => {
+      return fetchWithAuth(`${process.env.NEXT_PUBLIC_API_URL}/channels`);
+    },
+    joinChannel: async (channelId: string) => {
+      return fetchWithAuth(`${process.env.NEXT_PUBLIC_API_URL}/channels/${channelId}/join`, {
+        method: 'POST',
+      });
+    },
+    leaveChannel: async (channelId: string) => {
+      return fetchWithAuth(`${process.env.NEXT_PUBLIC_API_URL}/channels/${channelId}/leave`, {
+        method: 'POST',
+      });
+    },
   };
-}
+};
