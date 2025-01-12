@@ -32,7 +32,7 @@ export interface Message {
   updatedAt: string;
   isRead: boolean;
   isDelivered: boolean;
-  sender: {
+  user: {
     id: string;
     name: string;
     imageUrl?: string;

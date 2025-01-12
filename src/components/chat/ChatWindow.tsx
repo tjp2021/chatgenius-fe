@@ -9,6 +9,7 @@ import { CheckIcon, CheckCheckIcon, Send, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useChannelContext } from '@/contexts/channel-context';
+import { cn } from '@/lib/utils';
 
 interface ChatWindowProps {
   channelId: string;
@@ -23,7 +24,7 @@ interface MessageStatus {
 export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps) {
   const { socket, isConnected } = useSocket();
   const { toast } = useToast();
-  const { userId } = useAuth();
+  const { userId, user } = useAuth();
   const { channels } = useChannelContext();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [newMessage, setNewMessage] = useState('');
@@ -51,7 +52,13 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
     if (!socket) return;
 
     const handleMessage = (message: Message, eventType: 'new' | 'received') => {
-      console.log('[ChatWindow] Received message event:', { eventType, message });
+      console.log('[Socket] Received message:', {
+        id: message.id,
+        content: message.content,
+        channelId: message.channelId,
+        userId: message.userId,
+        user: message.user
+      });
       
       if (message.channelId === channelId) {
         if (eventType === 'new') {
@@ -131,9 +138,9 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
     setNewMessage(''); // Clear input immediately
     
     try {
-      // Add message to state immediately with a temporary ID
+      // Add message to state immediately with a temporary ID that includes userId for uniqueness
       const tempMessage: Message = {
-        id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${userId}`,
         content,
         channelId,
         userId: userId || '',
@@ -141,9 +148,9 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
         updatedAt: new Date().toISOString(),
         isRead: false,
         isDelivered: false,
-        sender: { 
-          id: userId || 'temp-user',
-          name: 'You'
+        user: {
+          id: userId || '',
+          name: user?.fullName || user?.username || 'Unknown User'
         }
       };
       
@@ -203,39 +210,40 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`flex flex-col ${message.userId === userId ? 'items-end' : 'items-start'}`}
+            className="flex flex-col items-start"
           >
-            <div className={`flex items-center gap-2 mb-1 ${message.userId === userId ? 'flex-row-reverse' : 'flex-row'}`}>
+            <div className="flex flex-col space-y-2">
               <span className="text-sm font-medium text-gray-600">
-                {message.sender?.name || 'Unknown User'}
+                {message.user?.name || 'Unknown User'}
               </span>
-            </div>
-            <div 
-              className={`max-w-[80%] rounded-lg p-3 ${
-                message.userId === userId
-                  ? 'bg-emerald-600 text-white' 
-                  : 'bg-gray-100 text-gray-900'
-              }`}
-            >
-              <p className="whitespace-pre-wrap break-words">{message.content}</p>
-            </div>
-            {message.userId === userId && (
-              <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
-                <span>{new Date(message.createdAt).toLocaleTimeString()}</span>
-                {messageStatuses.find(status => status.id === message.id)?.status === 'sending' && (
-                  <span className="flex items-center gap-1">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    Sending
-                  </span>
-                )}
-                {messageStatuses.find(status => status.id === message.id)?.status === 'sent' && (
-                  <CheckIcon className="h-3 w-3" />
-                )}
-                {messageStatuses.find(status => status.id === message.id)?.status === 'delivered' && (
-                  <CheckCheckIcon className="h-3 w-3" />
-                )}
+              <div className={cn(
+                "px-4 py-2 rounded-lg",
+                message.userId === userId 
+                  ? "bg-green-100 text-black" 
+                  : "bg-gray-100 text-gray-900"
+              )}>
+                {message.content}
               </div>
-            )}
+            </div>
+            <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+              <span>{new Date(message.createdAt).toLocaleTimeString()}</span>
+              {message.userId === userId && (
+                <>
+                  {messageStatuses.find(status => status.id === message.id)?.status === 'sending' && (
+                    <span className="flex items-center gap-1">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Sending
+                    </span>
+                  )}
+                  {messageStatuses.find(status => status.id === message.id)?.status === 'sent' && (
+                    <CheckIcon className="h-3 w-3" />
+                  )}
+                  {messageStatuses.find(status => status.id === message.id)?.status === 'delivered' && (
+                    <CheckCheckIcon className="h-3 w-3" />
+                  )}
+                </>
+              )}
+            </div>
           </div>
         ))}
       </div>
