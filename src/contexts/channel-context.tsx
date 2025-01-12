@@ -74,13 +74,24 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels/${channelId}/leave`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
       });
 
-      if (!response.ok) throw new Error('Failed to leave channel');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        console.error('[ChannelContext] Leave channel error:', errorData);
+        throw new Error(errorData?.message || 'Failed to leave channel');
+      }
 
       const data = await response.json();
+      console.log('[ChannelContext] Leave channel response:', data);
+      
+      // Emit socket event
+      if (socket && socket.connected) {
+        socket.emit('channel:leave', { channelId });
+      }
       
       if (data.wasDeleted) {
         setChannels(prev => prev.filter(channel => channel.id !== channelId));

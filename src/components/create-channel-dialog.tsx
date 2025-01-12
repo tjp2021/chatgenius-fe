@@ -114,7 +114,7 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
         type: activeTab.toUpperCase(),
         ownerId: user?.id,
         ...(activeTab === 'private' && {
-          memberIds: data.members
+          memberIds: [user?.id, ...data.members]
         }),
         ...(activeTab === 'dm' && {
           memberIds: data.members.filter(id => id !== user?.id)

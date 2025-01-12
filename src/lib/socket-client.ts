@@ -295,6 +295,7 @@ export class ChatSocketClient {
   }
 
   async leaveChannel(channelId: string): Promise<SocketResponse<void>> {
+    console.log('[Socket] Leaving channel:', channelId);
     return this.emit(SOCKET_EVENTS.CHANNEL.LEAVE, { channelId });
   }
 
