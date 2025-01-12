@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useChannelSocket } from '@/hooks/useChannelSocket';
+import { useState, useEffect } from 'react';
+import { useSocket } from '@/providers/socket-provider';
 import { Message } from '@/types/message';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@clerk/nextjs';
-import { CheckIcon, CheckCheckIcon } from 'lucide-react';
+import { CheckIcon, CheckCheckIcon, Send } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { useChannelContext } from '@/contexts/channel-context';
 
 interface ChatWindowProps {
   channelId: string;
@@ -18,224 +21,150 @@ interface MessageStatus {
 }
 
 export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps) {
+  const { socket, isConnected } = useSocket();
   const { toast } = useToast();
   const { userId } = useAuth();
+  const { channels } = useChannelContext();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [newMessage, setNewMessage] = useState('');
   const [isJoined, setIsJoined] = useState(false);
-  const [unreadMessages, setUnreadMessages] = useState<string[]>([]);
   const [messageStatuses, setMessageStatuses] = useState<MessageStatus[]>([]);
-  const [typingUsers, setTypingUsers] = useState<string[]>([]);
 
-  const {
-    sendMessage,
-    markAsRead,
-    joinChannel,
-    leaveChannel,
-    startTyping,
-    stopTyping,
-    isConnected,
-    error
-  } = useChannelSocket({
-    channelId,
-    userId: userId!,
-    onNewMessage: (message) => {
-      setMessages(prev => [...prev, message]);
-      setUnreadMessages(prev => [...prev, message.id]);
-    },
-    onMessageDelivered: (messageId) => {
-      setMessageStatuses(prev => 
-        prev.map(status => 
-          status.id === messageId 
-            ? { ...status, status: 'delivered' as const }
-            : status
-        )
-      );
-    },
-    onMessageRead: (messageId) => {
-      setMessageStatuses(prev => 
-        prev.map(status => 
-          status.id === messageId 
-            ? { ...status, status: 'read' as const }
-            : status
-        )
-      );
-    },
-    onTypingStart: (typingUserId) => {
-      setTypingUsers(prev => Array.from(new Set([...prev, typingUserId])));
-    },
-    onTypingStop: (typingUserId) => {
-      setTypingUsers(prev => prev.filter(id => id !== typingUserId));
-    },
-    onJoinSuccess: () => {
-      setIsJoined(true);
-      toast({
-        title: 'Channel Joined',
-        description: `Successfully joined channel ${channelId}`,
-      });
-    },
-    onLeaveSuccess: () => {
-      setIsJoined(false);
-      setMessages([]);
-      setUnreadMessages([]);
-      setMessageStatuses([]);
-      setTypingUsers([]);
-      toast({
-        title: 'Channel Left',
-        description: `Successfully left channel ${channelId}`,
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
-  });
+  // Get channel name
+  const channel = channels.find(c => c.id === channelId);
+  const channelName = channel?.name || channelId;
 
-  // Handle marking messages as read
+  // Join channel on mount
   useEffect(() => {
-    if (!isJoined || unreadMessages.length === 0) return;
+    if (!socket || !isConnected) return;
+    handleJoinChannel();
+    // Cleanup on unmount
+    return () => {
+      if (isJoined) {
+        handleLeaveChannel();
+      }
+    };
+  }, [socket, isConnected]);
 
-    const markMessagesAsRead = async () => {
-      try {
-        await Promise.all(unreadMessages.map(id => markAsRead(id)));
-        setUnreadMessages([]);
-      } catch (error) {
-        console.error('Failed to mark messages as read:', error);
+  // Listen for messages
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleNewMessage = (message: Message) => {
+      if (message.channelId === channelId) {
+        setMessages(prev => [...prev, message]);
       }
     };
 
-    markMessagesAsRead();
-  }, [unreadMessages, isJoined, markAsRead]);
+    socket.onNewMessage(handleNewMessage);
 
-  useEffect(() => {
-    if (error) {
-      toast({
-        title: 'Connection Error',
-        description: error.message,
-        variant: 'destructive',
-      });
-    }
-  }, [error, toast]);
+    return () => {
+      socket.offNewMessage(handleNewMessage);
+    };
+  }, [socket, channelId]);
 
   const handleJoinChannel = async () => {
+    if (!socket) return;
     try {
-      await joinChannel();
+      const response = await socket.joinChannel(channelId);
+      if (response.success) {
+        setIsJoined(true);
+      } else {
+        toast({
+          title: 'Error',
+          description: response.error || 'Failed to join channel',
+          variant: 'destructive'
+        });
+      }
     } catch (error) {
       console.error('Failed to join channel:', error);
     }
   };
 
   const handleLeaveChannel = async () => {
+    if (!socket) return;
     try {
-      await leaveChannel();
+      await socket.leaveChannel(channelId);
+      setIsJoined(false);
+      setMessages([]);
+      setMessageStatuses([]);
     } catch (error) {
       console.error('Failed to leave channel:', error);
     }
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMessage.trim() || !isJoined) return;
-
-    const tempId = Date.now().toString();
-    const tempMessage: Message = {
-      id: tempId,
-      content: newMessage.trim(),
-      channelId,
-      userId: userId!,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      isRead: false,
-      isDelivered: false,
-      sender: { id: userId!, name: 'You' }
-    };
-
-    // Add temporary message and status
-    setMessages(prev => [...prev, tempMessage]);
-    setMessageStatuses(prev => [...prev, { id: tempId, status: 'sending' }]);
-    setNewMessage('');
-
+  const handleSendMessage = async () => {
+    if (!socket || !newMessage.trim() || !isJoined) return;
+    
+    const content = newMessage.trim();
+    setNewMessage(''); // Clear input immediately
+    
     try {
-      await sendMessage(newMessage.trim());
-      // Update status to sent
-      setMessageStatuses(prev => 
-        prev.map(status => 
-          status.id === tempId 
-            ? { ...status, status: 'sent' as const }
-            : status
-        )
-      );
+      const tempId = Date.now().toString();
+      const response = await socket.sendMessage<Message>(channelId, content, tempId);
+      if (response.success && response.data) {
+        setMessageStatuses(prev => [...prev, { id: tempId, status: 'sent' }]);
+      } else {
+        toast({
+          title: 'Warning',
+          description: 'Message sent but no confirmation received',
+          variant: 'default'
+        });
+      }
     } catch (error) {
-      console.error('Failed to send message:', error);
-      // Remove temporary message on error
-      setMessages(prev => prev.filter(msg => msg.id !== tempId));
-      setMessageStatuses(prev => prev.filter(status => status.id !== tempId));
-    }
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setNewMessage(e.target.value);
-    if (e.target.value.trim()) {
-      startTyping();
-    } else {
-      stopTyping();
+      toast({
+        title: 'Error',
+        description: 'Failed to send message',
+        variant: 'destructive'
+      });
+      setNewMessage(content); // Restore the message if sending failed
     }
   };
 
   return (
-    <div className="flex flex-col h-[600px] w-full max-w-2xl mx-auto border rounded-lg overflow-hidden">
+    <div className="flex flex-col h-[600px] w-full max-w-2xl mx-auto overflow-hidden">
       {/* Header */}
       <div className="p-4 border-b bg-white">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Channel: {channelId}</h2>
-          <div className="space-x-2">
-            {!isJoined ? (
-              <button
-                onClick={handleJoinChannel}
-                disabled={!isConnected}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-              >
-                Join Channel
-              </button>
+          <h2 className="text-lg font-semibold">Channel: {channelName}</h2>
+          <div className="text-sm text-gray-500">
+            {isConnected ? (
+              <span className="text-green-500">Connected</span>
             ) : (
-              <button
-                onClick={handleLeaveChannel}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700"
-              >
-                Leave Channel
-              </button>
+              <span className="text-red-500">Disconnected</span>
             )}
           </div>
-        </div>
-        <div className="text-sm text-gray-500">
-          Status: {isConnected ? 'Connected' : 'Disconnected'}
-          {isJoined && ' (Joined)'}
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 p-4 overflow-y-auto bg-gray-50">
+      <div className="flex-1 p-4 overflow-y-auto bg-gray-50 space-y-4">
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`mb-4 p-3 bg-white rounded-lg shadow-sm ${
-              message.userId === userId ? 'ml-auto max-w-[80%]' : 'mr-auto max-w-[80%]'
-            }`}
+            className={`flex flex-col ${message.userId === userId ? 'items-end' : 'items-start'}`}
           >
-            <div className="flex items-center justify-between">
-              <span className="font-medium">{message.sender.name}</span>
+            <div className={`flex items-center gap-2 mb-1 ${message.userId === userId ? 'flex-row-reverse' : 'flex-row'}`}>
+              <span className="text-sm font-medium text-gray-600">
+                {message.sender?.name || 'Unknown User'}
+              </span>
               <span className="text-xs text-gray-500">
                 {new Date(message.createdAt).toLocaleTimeString()}
               </span>
             </div>
-            <p className="mt-1 text-gray-700">{message.content}</p>
+            <div 
+              className={`max-w-[80%] rounded-lg p-3 ${
+                message.userId === userId
+                  ? 'bg-emerald-600 text-white' 
+                  : 'bg-gray-100 text-gray-900'
+              }`}
+            >
+              <p className="whitespace-pre-wrap break-words">{message.content}</p>
+            </div>
             {message.userId === userId && (
               <div className="flex justify-end mt-1">
                 {messageStatuses.find(status => status.id === message.id)?.status === 'sending' && (
-                  <span className="text-gray-400 text-xs">Sending...</span>
+                  <span className="text-xs text-gray-500">Sending...</span>
                 )}
                 {messageStatuses.find(status => status.id === message.id)?.status === 'sent' && (
                   <CheckIcon className="w-4 h-4 text-gray-400" />
@@ -243,44 +172,32 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
                 {messageStatuses.find(status => status.id === message.id)?.status === 'delivered' && (
                   <CheckCheckIcon className="w-4 h-4 text-gray-400" />
                 )}
-                {messageStatuses.find(status => status.id === message.id)?.status === 'read' && (
-                  <CheckCheckIcon className="w-4 h-4 text-blue-500" />
-                )}
               </div>
             )}
           </div>
         ))}
       </div>
 
-      {/* Typing Indicator */}
-      {typingUsers.length > 0 && (
-        <div className="px-4 py-2 bg-gray-50 text-sm text-gray-500">
-          {typingUsers.length === 1
-            ? 'Someone is typing...'
-            : `${typingUsers.length} people are typing...`}
-        </div>
-      )}
-
       {/* Message Input */}
-      <form onSubmit={handleSendMessage} className="p-4 bg-white border-t">
-        <div className="flex space-x-2">
-          <input
-            type="text"
+      <div className="p-4 border-t bg-white">
+        <div className="flex gap-2">
+          <Input
             value={newMessage}
-            onChange={handleInputChange}
-            disabled={!isJoined}
-            placeholder={isJoined ? "Type a message..." : "Join channel to send messages"}
-            className="flex-1 px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder="Type a message..."
+            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
+            className="flex-1"
           />
-          <button
-            type="submit"
-            disabled={!isJoined || !newMessage.trim()}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+          <Button 
+            onClick={handleSendMessage}
+            size="icon"
+            className="h-10 w-10"
+            variant="ghost"
           >
-            Send
-          </button>
+            <Send className="h-5 w-5" />
+          </Button>
         </div>
-      </form>
+      </div>
     </div>
   );
 } 

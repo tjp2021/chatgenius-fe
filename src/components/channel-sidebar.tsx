@@ -16,7 +16,7 @@ import { CreateDMModal } from './modals/create-dm-modal';
 
 export function ChannelSidebar() {
   const [channelToLeave, setChannelToLeave] = useState<Channel | null>(null);
-  const { channels, isLoading: isLoadingChannels, leaveChannel } = useChannelContext();
+  const { channels, isLoading: isLoadingChannels, leaveChannel, selectedChannel, setSelectedChannel } = useChannelContext();
   const { isConnected } = useSocket();
   const { userId } = useAuth();
 
@@ -78,6 +78,11 @@ export function ChannelSidebar() {
     }
   };
 
+  const handleChannelSelect = (channelId: string) => {
+    console.log('Channel selected:', channelId);
+    setSelectedChannel(channelId);
+  };
+
   return (
     <div className="flex flex-col h-full bg-emerald-900">
       {/* Header */}
@@ -134,8 +139,8 @@ export function ChannelSidebar() {
               onToggle={() => toggleSection('public')}
               userId={userId}
               onlineUsers={{}}
-              selectedChannel={null}
-              onChannelSelect={() => {}}
+              selectedChannel={selectedChannel}
+              onChannelSelect={handleChannelSelect}
               onJoinChannel={(channelId) => {}}
               onLeaveChannel={handleSetChannelToLeave}
             />
@@ -148,8 +153,8 @@ export function ChannelSidebar() {
               onToggle={() => toggleSection('private')}
               userId={userId}
               onlineUsers={{}}
-              selectedChannel={null}
-              onChannelSelect={() => {}}
+              selectedChannel={selectedChannel}
+              onChannelSelect={handleChannelSelect}
               onJoinChannel={(channelId) => {}}
               onLeaveChannel={handleSetChannelToLeave}
             />
@@ -162,8 +167,8 @@ export function ChannelSidebar() {
               onToggle={() => toggleSection('dm')}
               userId={userId}
               onlineUsers={{}}
-              selectedChannel={null}
-              onChannelSelect={() => {}}
+              selectedChannel={selectedChannel}
+              onChannelSelect={handleChannelSelect}
               onJoinChannel={(channelId) => {}}
               onLeaveChannel={handleSetChannelToLeave}
             />
