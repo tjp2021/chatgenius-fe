@@ -7,6 +7,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Textarea } from '@/components/ui/textarea';
 import { useChannelContext } from '@/contexts/channel-context';
 import { ChannelType } from '@/types/channel';
+import { useAuth } from '@clerk/nextjs';
 
 interface CreateChannelModalProps {
   isOpen: boolean;
@@ -19,16 +20,19 @@ export function CreateChannelModal({ isOpen, onClose }: CreateChannelModalProps)
   const [type, setType] = useState<'PUBLIC' | 'PRIVATE'>('PUBLIC');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { refreshChannels } = useChannelContext();
+  const { getToken } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels`, {
+      const token = await getToken();
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           name,
@@ -38,7 +42,8 @@ export function CreateChannelModal({ isOpen, onClose }: CreateChannelModalProps)
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create channel');
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to create channel');
       }
 
       await refreshChannels();
