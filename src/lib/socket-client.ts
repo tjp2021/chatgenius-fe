@@ -1,6 +1,8 @@
 import { io, Socket } from 'socket.io-client';
+import { Channel } from '@/types/channel';
 import { Message } from '@/types/message';
-import { SocketResponse } from '@/types/socket';
+import { TypingData } from '@/types/typing';
+import { ChannelMemberData } from '@/types/channel-member';
 import { User } from '@/types/user';
 
 // Event name constants
@@ -9,7 +11,9 @@ const SOCKET_EVENTS = {
     NEW: 'message:new',
     RECEIVED: 'message:received',
     SEND: 'message:send',
-    CONFIRM: 'message:confirm'
+    CONFIRM: 'message:confirm',
+    REACTION_ADDED: 'message:reaction:added',
+    REACTION_RECEIVED: 'message:reaction:received'
   },
   CHANNEL: {
     JOIN: 'channel:join',
@@ -49,17 +53,36 @@ interface MessageEventPayload<T = Message> {
   message: T;
   channelId: string;
   timestamp: number;
+  processed?: boolean;
+}
+
+interface ReactionEventPayload {
+  messageId: string;
+  reaction: {
+    id: string;
+    type: string;
+    userId: string;
+    timestamp: number;
+  };
+  processed?: boolean;
 }
 
 export interface SocketConfig {
   url: string;
-  token: string;    // Raw Clerk JWT token
-  userId: string;   // Clerk user ID
+  token: string;
+  userId: string;
+  reconnectionConfig?: {
+    reconnection?: boolean;
+    reconnectionAttempts?: number;
+    reconnectionDelay?: number;
+    reconnectionDelayMax?: number;
+    timeout?: number;
+  };
   onAuthError?: (error: Error) => void;
   onConnectionError?: (error: Error) => void;
-  onReconnect?: () => void;
   onConnect?: () => void;
-  onDisconnect?: () => void;
+  onDisconnect?: (reason: string) => void;
+  onReconnect?: () => void;
 }
 
 interface PendingMessage {
@@ -70,219 +93,451 @@ interface PendingMessage {
   timestamp: number;
 }
 
+interface SocketResponse {
+  success: boolean;
+  error?: string;
+  data?: any;
+}
+
 export class ChatSocketClient {
-  private socket!: Socket;
+  private socket: Socket | null = null;
+  private config: SocketConfig;
+  private connectionState: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
   private reconnectAttempts = 0;
-  private readonly MAX_RECONNECT_ATTEMPTS = 5;
+  private isReconnecting = false;
+  private pendingMessages: Map<string, PendingMessage> = new Map();
+  private processedMessageIds: Set<string> = new Set();
+  private processingMessages: Set<string> = new Set();
+  private processingReactions: Set<string> = new Set();
+  private static instance: ChatSocketClient | null = null;
+  private maxReconnectAttempts = 5;
+  private isServerDisconnect = false;
+  private cleanupInProgress = false;
+  private channelListeners = new Set<(channels: Channel[]) => void>();
+  private messageListeners = new Set<(message: Message) => void>();
+  private typingListeners = new Set<(data: TypingData) => void>();
+  private channelMemberListeners = new Set<(data: ChannelMemberData) => void>();
+
+  private readonly MAX_RECONNECT_ATTEMPTS = 3;
   private readonly INITIAL_RECONNECT_DELAY = 1000;
   private readonly MAX_RECONNECT_DELAY = 5000;
-  private pendingMessages = new Map<string, PendingMessage>();
-  private isReconnecting = false;
-  private connectionState: 'connected' | 'disconnected' | 'connecting' = 'disconnected';
-  private processedMessageIds = new Set<string>();
 
-  constructor(private config: SocketConfig) {
+  private constructor(config: SocketConfig) {
+    this.config = config;
+    console.log('[Socket] Creating new instance with config:', {
+      url: config.url,
+      userId: config.userId,
+      hasToken: !!config.token
+    });
     this.initializeSocket();
   }
 
+  public static getInstance(config: SocketConfig): ChatSocketClient {
+    if (!ChatSocketClient.instance) {
+      ChatSocketClient.instance = new ChatSocketClient(config);
+    }
+    return ChatSocketClient.instance;
+  }
+
   private initializeSocket() {
-    if (!this.config.url) {
-      throw new Error('Socket URL is required');
+    if (this.socket?.connected) {
+      console.log('[Socket] Already connected, skipping initialization');
+      return;
     }
 
-    if (!this.config.token) {
-      throw new Error('Authentication token is required');
+    if (!this.config.url || !this.config.token || !this.config.userId) {
+      console.error('[Socket] Missing required config:', {
+        hasUrl: !!this.config.url,
+        hasToken: !!this.config.token,
+        hasUserId: !!this.config.userId
+      });
+      throw new Error('Invalid socket configuration');
     }
 
-    if (!this.config.userId) {
-      throw new Error('User ID is required');
+    if (this.connectionState === 'connecting') {
+      console.log('[Socket] Already connecting, skipping initialization');
+      return;
     }
 
-    console.log('[Socket] Initializing with config:', {
+    console.log('[Socket] Initializing connection:', {
       url: this.config.url,
       userId: this.config.userId,
-      hasToken: !!this.config.token,
-      reconnection: true,
-      reconnectionDelay: this.INITIAL_RECONNECT_DELAY,
-      reconnectionAttempts: this.MAX_RECONNECT_ATTEMPTS
+      reconnectionConfig: this.config.reconnectionConfig
     });
 
     this.connectionState = 'connecting';
     
     try {
+      // Prepare handshake data
+      const handshakeAuth = {
+        token: this.config.token,
+        userId: this.config.userId
+      };
+
       this.socket = io(this.config.url, {
         path: '/api/socket.io',
         auth: {
-          token: this.config.token,
+          token: `Bearer ${this.config.token}`,
           userId: this.config.userId
-        },
-        reconnection: true,
-        reconnectionDelay: this.INITIAL_RECONNECT_DELAY,
-        reconnectionAttempts: this.MAX_RECONNECT_ATTEMPTS,
-        transports: ['websocket', 'polling'],
-        forceNew: true,
-        timeout: 10000,
-        autoConnect: false
+        }
       });
 
-      // Set up event handlers before connecting
-      this.setupEventHandlers();
+      // Add debug logging for connection details
+      console.log('[Socket] Connection details:', {
+        url: this.config.url,
+        auth: {
+          token: `Bearer ${this.config.token}`,
+          userId: this.config.userId
+        }
+      });
 
-      // Now connect
+      this.setupEventHandlers();
       this.socket.connect();
+
     } catch (error) {
-      console.error('[Socket] Failed to initialize socket:', error);
+      this.connectionState = 'disconnected';
+      console.error('[Socket] Initialization failed:', error);
       throw error;
     }
   }
 
   private setupEventHandlers() {
+    const socket = this.socket;
+    if (!socket) return;
+
     // Debug logging for all events
-    this.socket.onAny((event, ...args) => {
+    socket.onAny((event, ...args) => {
       console.log(`[Socket Event] ${event}:`, args);
     });
 
+    // Message event handlers with processing guards
+    const handleNewMessage = (data: MessageEventPayload) => {
+      const messageKey = `${this.config.userId}:${data.message.id}`;
+      
+      if (data.processed || this.processingMessages.has(messageKey)) {
+        console.log('[Socket] Skipping duplicate message processing:', messageKey);
+        return;
+      }
+
+      try {
+        this.processingMessages.add(messageKey);
+        // Handle the message
+        this.processedMessageIds.add(data.message.id);
+        // Emit confirmation back to server with processed flag
+        if (socket.connected) {
+          socket.emit(SOCKET_EVENTS.MESSAGE.RECEIVED, {
+            messageId: data.message.id,
+            processed: true
+          });
+        }
+      } finally {
+        this.processingMessages.delete(messageKey);
+      }
+    };
+
+    const handleNewReaction = (data: ReactionEventPayload) => {
+      const reactionKey = `${this.config.userId}:${data.messageId}:${data.reaction.id}`;
+      
+      if (data.processed || this.processingReactions.has(reactionKey)) {
+        console.log('[Socket] Skipping duplicate reaction processing:', reactionKey);
+        return;
+      }
+
+      try {
+        this.processingReactions.add(reactionKey);
+        // Handle the reaction
+        // Emit confirmation back to server with processed flag
+        if (socket.connected) {
+          socket.emit(SOCKET_EVENTS.MESSAGE.REACTION_RECEIVED, {
+            messageId: data.messageId,
+            reactionId: data.reaction.id,
+            processed: true
+          });
+        }
+      } finally {
+        this.processingReactions.delete(reactionKey);
+      }
+    };
+
+    // Register event handlers
+    socket.on(SOCKET_EVENTS.MESSAGE.NEW, handleNewMessage);
+    socket.on(SOCKET_EVENTS.MESSAGE.REACTION_ADDED, handleNewReaction);
+
     // Connection events
-    this.socket.on('connect', () => {
-      console.log('[Socket] Connected successfully');
+    socket.on('connect', () => {
+      console.log('[Socket] Connected:', {
+        userId: this.config.userId,
+        connectionState: this.connectionState
+      });
+      
       this.connectionState = 'connected';
       this.reconnectAttempts = 0;
+      this.isReconnecting = false;
       this.config.onConnect?.();
-      this.processPendingMessages();
     });
 
-    this.socket.on('connect_error', (error: Error) => {
+    socket.on('connect_error', (error: Error) => {
       console.error('[Socket] Connection error:', {
-        message: error.message,
-        stack: error.stack
+        error: error.message,
+        userId: this.config.userId,
+        connectionState: this.connectionState,
+        reconnectAttempts: this.reconnectAttempts,
+        socketId: this.socket?.id,
+        auth: {
+          hasToken: !!this.config.token,
+          hasUserId: !!this.config.userId
+        },
+        timestamp: new Date().toISOString()
       });
       
       this.connectionState = 'disconnected';
       
       if (error.message.includes('Authentication')) {
+        console.error('[Socket] Authentication error:', {
+          error: error.message,
+          userId: this.config.userId,
+          hasToken: !!this.config.token,
+          timestamp: new Date().toISOString()
+        });
         this.config.onAuthError?.(error);
       } else {
         this.config.onConnectionError?.(error);
       }
-
-      if (!this.isReconnecting) {
-        this.handleReconnection();
-      }
     });
 
-    this.socket.on('disconnect', (reason) => {
+    socket.on('disconnect', (reason: string) => {
       console.log('[Socket] Disconnected:', {
         reason,
-        wasConnected: this.connectionState === 'connected',
-        socketId: this.socket.id
+        userId: this.config.userId,
+        connectionState: this.connectionState
       });
       
       this.connectionState = 'disconnected';
-      this.config.onDisconnect?.();
+      this.config.onDisconnect?.(reason);
       
       if (reason === 'io server disconnect') {
-        // Server initiated disconnect, attempt to reconnect
-        this.socket.connect();
+        this.isServerDisconnect = true;
+        this.cleanup(); // Full cleanup on server disconnect
+      } else if (reason === 'io client disconnect' || reason === 'forced close') {
+        this.cleanup();
       }
     });
 
     // Transport events
-    this.socket.io.on("error", (error) => {
-      console.error("[Socket.IO] Transport error:", error);
+    socket.io.on("reconnect_attempt", (attempt: number) => {
+      if (this.isServerDisconnect || this.cleanupInProgress) {
+        console.log('[Socket] Preventing reconnect attempt due to server disconnect or cleanup');
+        this.cleanup();
+        return;
+      }
+      
+      console.log("[Socket] Reconnection attempt:", { attempt });
+      this.reconnectAttempts = attempt;
     });
 
-    this.socket.io.on("reconnect_attempt", (attempt) => {
-      console.log("[Socket.IO] Reconnection attempt:", attempt);
-    });
+    socket.io.on("reconnect", () => {
+      if (this.isServerDisconnect || this.cleanupInProgress) {
+        console.log('[Socket] Preventing reconnect due to server disconnect or cleanup');
+        this.cleanup();
+        return;
+      }
 
-    this.socket.io.on("reconnect", () => {
-      console.log("[Socket.IO] Reconnected successfully");
+      console.log("[Socket] Reconnected successfully");
+      this.connectionState = 'connected';
       this.config.onReconnect?.();
-    });
-
-    // Auth events
-    this.socket.on('unauthorized', (error) => {
-      console.error('[Socket] Authentication failed:', error);
-      this.config.onAuthError?.(new Error('Authentication failed'));
-    });
-  }
-
-  private async handleReconnection() {
-    this.isReconnecting = true;
-    const delay = Math.min(
-      this.INITIAL_RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts),
-      this.MAX_RECONNECT_DELAY
-    );
-
-    await new Promise(resolve => setTimeout(resolve, delay));
-
-    if (this.reconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
-      this.reconnectAttempts++;
-      this.socket.connect();
-    } else {
+      this.reconnectAttempts = 0;
       this.isReconnecting = false;
-      this.config.onConnectionError?.(new Error('Max reconnection attempts reached'));
-    }
+    });
+
+    socket.io.on("reconnect_failed", () => {
+      console.error("[Socket] Reconnection failed");
+      this.cleanup();
+    });
   }
 
-  private async processPendingMessages() {
-    if (this.connectionState !== 'connected') return;
+  private cleanup() {
+    if (this.cleanupInProgress) {
+      console.log('[Socket] Cleanup already in progress, skipping');
+      return;
+    }
 
-    for (const [tempId, message] of Array.from(this.pendingMessages.entries())) {
+    this.cleanupInProgress = true;
+    console.log('[Socket] Cleaning up:', {
+      socketId: this.socket?.id,
+      connectionState: this.connectionState,
+      hasSocket: !!this.socket
+    });
+
+    // Reset all state
+    this.connectionState = 'disconnected';
+    this.reconnectAttempts = 0;
+    this.isReconnecting = false;
+    this.isServerDisconnect = false;
+    this.pendingMessages.clear();
+    this.processedMessageIds.clear();
+    this.processingMessages.clear();
+    this.processingReactions.clear();
+
+    // Clear all listeners first
+    this.channelListeners.clear();
+    this.messageListeners.clear();
+    this.typingListeners.clear();
+    this.channelMemberListeners.clear();
+
+    if (this.socket) {
       try {
-        const response = await this.sendMessage<Message>(
-          message.channelId,
-          message.content,
-          tempId
-        );
-        if (response.success) {
-          this.pendingMessages.delete(tempId);
-        } else if (message.retryCount < this.MAX_RECONNECT_ATTEMPTS) {
-          message.retryCount++;
-        } else {
-          this.pendingMessages.delete(tempId);
-          console.error('Failed to send message after max retries:', tempId);
-        }
+        this.socket.removeAllListeners();
+        this.socket.disconnect();
       } catch (error) {
-        console.error('Error processing pending message:', error);
+        console.warn('[Socket] Error during socket cleanup:', error);
+      }
+      this.socket = null;
+    }
+
+    // Reset the singleton instance
+    ChatSocketClient.instance = null;
+    this.cleanupInProgress = false;
+  }
+
+  public disconnect() {
+    if (this.socket && !this.cleanupInProgress) {
+      console.log('SOCKET CLIENT - Starting disconnect', {
+        socketId: this.socket.id,
+        timestamp: new Date().toISOString()
+      });
+
+      this.cleanupInProgress = true;
+      
+      try {
+        // Reset state before disconnecting
+        this.channelListeners.clear();
+        this.messageListeners.clear();
+        this.typingListeners.clear();
+        this.channelMemberListeners.clear();
+        
+        // Remove all listeners
+        this.socket.removeAllListeners();
+        
+        // Disconnect the socket
+        this.socket.disconnect();
+      } catch (error) {
+        console.error('SOCKET CLIENT - Error during disconnect:', error);
+      } finally {
+        this.socket = null;
+        this.reconnectAttempts = 0;
+        this.isServerDisconnect = false;
+        this.cleanupInProgress = false;
       }
     }
   }
 
-  async sendMessage<T>(
-    channelId: string, 
-    content: string,
-    tempId: string = Date.now().toString()
-  ): Promise<SocketResponse<T>> {
-    console.log('[Socket] Attempting to send message:', { channelId, content, tempId });
-    
-    if (this.connectionState !== 'connected') {
-      console.log('[Socket] Not connected, queueing message');
-      this.pendingMessages.set(tempId, {
-        channelId,
-        content,
-        tempId,
-        retryCount: 0,
-        timestamp: Date.now()
-      });
-      return { success: false, error: 'Not connected' };
-    }
-
-    return this.emit<T>(SOCKET_EVENTS.MESSAGE.SEND, { channelId, content, tempId });
+  public isConnected(): boolean {
+    return this.connectionState === 'connected' && !!this.socket?.connected;
   }
 
-  async emit<T>(event: string, data: any): Promise<SocketResponse<T>> {
-    if (this.connectionState !== 'connected') {
-      return Promise.resolve({ success: false, error: 'Not connected' });
+  public getSocketId(): string | null {
+    return this.socket?.id || null;
+  }
+
+  // Public properties
+  public get id(): string | undefined {
+    return this.socket?.id;
+  }
+
+  public get io(): any {
+    return this.socket?.io;
+  }
+
+  // Public methods
+  public async sendMessage(channelId: string, content: string, tempId: string): Promise<SocketResponse> {
+    if (!this.isConnected() || !this.socket) {
+      return { success: false, error: 'Socket not connected' };
+    }
+
+    const messageKey = `${this.config.userId}:${tempId}`;
+    if (this.processingMessages.has(messageKey)) {
+      return { success: false, error: 'Message already being processed' };
     }
 
     return new Promise((resolve) => {
-      // Set a timeout to handle cases where the server doesn't respond
+      try {
+        this.processingMessages.add(messageKey);
+        this.socket!.emit('send_message', {
+          channelId,
+          content,
+          tempId,
+          processed: false // Initial emission is unprocessed
+        }, (response: SocketResponse) => {
+          if (response.success) {
+            this.pendingMessages.delete(tempId);
+          } else {
+            this.pendingMessages.set(tempId, {
+              channelId,
+              content,
+              tempId,
+              retryCount: 0,
+              timestamp: Date.now()
+            });
+          }
+          resolve(response);
+        });
+      } finally {
+        this.processingMessages.delete(messageKey);
+      }
+    });
+  }
+
+  public async joinChannel(channelId: string): Promise<SocketResponse> {
+    if (!this.isConnected() || !this.socket) {
+      return { success: false, error: 'Socket not connected' };
+    }
+
+    return new Promise((resolve) => {
+      this.socket!.emit('join_channel', { channelId }, (response: SocketResponse) => {
+        resolve(response);
+      });
+    });
+  }
+
+  public async leaveChannel(channelId: string): Promise<SocketResponse> {
+    if (!this.isConnected() || !this.socket) {
+      return { success: false, error: 'Socket not connected' };
+    }
+
+    return new Promise((resolve) => {
+      this.socket!.emit('leave_channel', { channelId }, (response: SocketResponse) => {
+        resolve(response);
+      });
+    });
+  }
+
+  public on(event: string, callback: (...args: any[]) => void): void {
+    if (!this.socket) {
+      console.warn('[Socket] Skipping add listener - socket not initialized');
+      return;
+    }
+    this.socket.on(event, callback);
+  }
+
+  public off(event: string, callback: (...args: any[]) => void): void {
+    if (!this.socket) {
+      console.warn('[Socket] Skipping remove listener - socket not initialized');
+      return;
+    }
+    this.socket.off(event, callback);
+  }
+
+  public async emit(event: string, data: any): Promise<SocketResponse> {
+    if (!this.isConnected() || !this.socket) {
+      return { success: false, error: 'Socket not connected' };
+    }
+
+    return new Promise((resolve) => {
       const timeoutId = setTimeout(() => {
         resolve({ success: false, error: 'Server did not respond in time' });
       }, 5000);
 
-      this.socket.emit(event, data, (response: SocketResponse<T>) => {
+      this.socket!.emit(event, data, (response: SocketResponse) => {
         clearTimeout(timeoutId);
         console.log(`[Socket] Received response for ${event}:`, response);
         resolve(response || { success: false, error: 'No response from server' });
@@ -290,38 +545,24 @@ export class ChatSocketClient {
     });
   }
 
-  async joinChannel(channelId: string): Promise<SocketResponse<void>> {
-    return this.emit(SOCKET_EVENTS.CHANNEL.JOIN, { channelId });
-  }
-
-  async leaveChannel(channelId: string): Promise<SocketResponse<void>> {
-    console.log('[Socket] Leaving channel:', channelId);
-    return this.emit(SOCKET_EVENTS.CHANNEL.LEAVE, { channelId });
-  }
-
-  async confirmDelivery(messageId: string): Promise<SocketResponse<void>> {
+  public async confirmDelivery(messageId: string): Promise<SocketResponse> {
     return this.emit(SOCKET_EVENTS.MESSAGE.CONFIRM, { messageId });
   }
 
-  updateCredentials(token: string, userId: string) {
-    this.config.token = token;
-    this.config.userId = userId;
+  public updateCredentials(token: string, userId: string): void {
+    if (!this.socket) {
+      console.warn('[Socket] Cannot update credentials - socket is null');
+      return;
+    }
+    
+    this.config = {
+      ...this.config,
+      token,
+      userId
+    };
+    
     this.socket.auth = { token, userId };
     this.socket.disconnect().connect();
-  }
-
-  disconnect() {
-    this.pendingMessages.clear();
-    this.socket.disconnect();
-    this.connectionState = 'disconnected';
-  }
-
-  on(event: string, callback: (...args: any[]) => void) {
-    this.socket.on(event, callback);
-  }
-
-  off(event: string, callback: (...args: any[]) => void) {
-    this.socket.off(event, callback);
   }
 
   public get connected(): boolean {
@@ -332,12 +573,23 @@ export class ChatSocketClient {
     return this.connectionState === 'connecting';
   }
 
-  // Typed event handlers
+  // Typed event handlers with null checks
   onNewMessage<T>(callback: (message: T, eventType: 'new' | 'received') => void): void {
+    if (!this.socket) {
+      console.warn('[Socket] Skipping message handlers - socket not initialized');
+      return;
+    }
+
     console.log('[Socket] Setting up message handlers');
     
     this.socket.on(SOCKET_EVENTS.MESSAGE.NEW, (message: any) => {
-      console.log('[Socket] Processing message:new event:', { messageId: message.id, processed: this.processedMessageIds.has(message.id) });
+      if (!this.socket?.connected) return;
+      
+      console.log('[Socket] Processing message:new event:', { 
+        messageId: message.id, 
+        processed: this.processedMessageIds.has(message.id) 
+      });
+      
       if (!this.processedMessageIds.has(message.id)) {
         this.processedMessageIds.add(message.id);
         console.log('[Socket] Calling callback for new message:', message.id);
@@ -348,62 +600,92 @@ export class ChatSocketClient {
     });
     
     this.socket.on(SOCKET_EVENTS.MESSAGE.RECEIVED, (message: any) => {
+      if (!this.socket?.connected) return;
       console.log('[Socket] Received message:received event:', message);
       callback(message, 'received');
     });
   }
 
   offNewMessage<T>(callback: (message: T, eventType: 'new' | 'received') => void): void {
+    if (!this.socket) {
+      console.warn('[Socket] Skipping cleanup - socket not initialized');
+      return;
+    }
     console.log('[Socket] Cleaning up message handlers');
     this.socket.off(SOCKET_EVENTS.MESSAGE.NEW, callback);
     this.socket.off(SOCKET_EVENTS.MESSAGE.RECEIVED, callback);
   }
 
+  private handleSocketEvent<T>(
+    action: 'on' | 'off',
+    event: string,
+    callback: (data: T) => void,
+    context: string
+  ): void {
+    // Early return if socket is null, but don't warn for 'off' actions during cleanup
+    if (!this.socket) {
+      if (action === 'on') {
+        console.warn(`[Socket] Cannot add ${context} listener - socket not initialized`);
+      }
+      return;
+    }
+
+    try {
+      if (action === 'off' && !this.socket.hasListeners(event)) {
+        // Skip removing if no listeners exist
+        return;
+      }
+      this.socket[action](event, callback);
+    } catch (error) {
+      console.warn(`[Socket] Error ${action === 'on' ? 'adding' : 'removing'} ${context} listener:`, error);
+    }
+  }
+
   onChannelJoined(callback: (data: ChannelEventPayload) => void): void {
-    this.socket.on(SOCKET_EVENTS.CHANNEL.JOINED, callback);
+    this.handleSocketEvent('on', SOCKET_EVENTS.CHANNEL.JOINED, callback, 'channel joined');
   }
 
   offChannelJoined(callback: (data: ChannelEventPayload) => void): void {
-    this.socket.off(SOCKET_EVENTS.CHANNEL.JOINED, callback);
+    this.handleSocketEvent('off', SOCKET_EVENTS.CHANNEL.JOINED, callback, 'channel joined');
   }
 
   onChannelLeft(callback: (data: ChannelEventPayload) => void): void {
-    this.socket.on(SOCKET_EVENTS.CHANNEL.LEFT, callback);
+    this.handleSocketEvent('on', SOCKET_EVENTS.CHANNEL.LEFT, callback, 'channel left');
   }
 
   offChannelLeft(callback: (data: ChannelEventPayload) => void): void {
-    this.socket.off(SOCKET_EVENTS.CHANNEL.LEFT, callback);
+    this.handleSocketEvent('off', SOCKET_EVENTS.CHANNEL.LEFT, callback, 'channel left');
   }
 
   onChannelError(callback: (error: Error) => void): void {
-    this.socket.on(SOCKET_EVENTS.CHANNEL.ERROR, callback);
+    this.handleSocketEvent('on', SOCKET_EVENTS.CHANNEL.ERROR, callback, 'channel error');
   }
 
   offChannelError(callback: (error: Error) => void): void {
-    this.socket.off(SOCKET_EVENTS.CHANNEL.ERROR, callback);
+    this.handleSocketEvent('off', SOCKET_EVENTS.CHANNEL.ERROR, callback, 'channel error');
   }
 
   onChannelCreated(callback: (data: ChannelEventPayload) => void): void {
-    this.socket.on(SOCKET_EVENTS.CHANNEL.CREATED, callback);
+    this.handleSocketEvent('on', SOCKET_EVENTS.CHANNEL.CREATED, callback, 'channel created');
   }
 
   offChannelCreated(callback: (data: ChannelEventPayload) => void): void {
-    this.socket.off(SOCKET_EVENTS.CHANNEL.CREATED, callback);
+    this.handleSocketEvent('off', SOCKET_EVENTS.CHANNEL.CREATED, callback, 'channel created');
   }
 
   onChannelUpdated(callback: (data: ChannelEventPayload) => void): void {
-    this.socket.on(SOCKET_EVENTS.CHANNEL.UPDATED, callback);
+    this.handleSocketEvent('on', SOCKET_EVENTS.CHANNEL.UPDATED, callback, 'channel updated');
   }
 
   offChannelUpdated(callback: (data: ChannelEventPayload) => void): void {
-    this.socket.off(SOCKET_EVENTS.CHANNEL.UPDATED, callback);
+    this.handleSocketEvent('off', SOCKET_EVENTS.CHANNEL.UPDATED, callback, 'channel updated');
   }
 
   onChannelDeleted(callback: (data: ChannelEventPayload) => void): void {
-    this.socket.on(SOCKET_EVENTS.CHANNEL.DELETED, callback);
+    this.handleSocketEvent('on', SOCKET_EVENTS.CHANNEL.DELETED, callback, 'channel deleted');
   }
 
   offChannelDeleted(callback: (data: ChannelEventPayload) => void): void {
-    this.socket.off(SOCKET_EVENTS.CHANNEL.DELETED, callback);
+    this.handleSocketEvent('off', SOCKET_EVENTS.CHANNEL.DELETED, callback, 'channel deleted');
   }
 }
