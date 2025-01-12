@@ -9,7 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
-import { Channel } from '@/types/channel';
+import { Channel, ChannelType } from '@/types/channel';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 interface BrowseChannelsModalProps {
@@ -19,52 +19,77 @@ interface BrowseChannelsModalProps {
 
 export function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsModalProps) {
   const { userId, getToken } = useAuth();
-  const { joinChannel, leaveChannel, channels: contextChannels } = useChannelContext();
+  const { joinChannel, leaveChannel, channels: contextChannels, refreshChannels } = useChannelContext();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isLeaving, setIsLeaving] = useState<string | null>(null);
   const [isJoining, setIsJoining] = useState<string | null>(null);
 
-  // Fetch all channels
-  const { data: allChannels = [], isLoading } = useQuery<Channel[]>({
-    queryKey: ['all-channels'],
+  // Fetch channels based on view type
+  const { data: channels = [], isLoading, error } = useQuery({
+    queryKey: ['channels', 'browse', isOpen],
     queryFn: async () => {
+      console.log('[BrowseChannels] Query running, modal open:', isOpen);
       const token = await getToken();
-      if (!token) {
-        throw new Error('No authentication token available');
-      }
+      if (!token) throw new Error('No authentication token available');
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels?view=browse`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
+      
       if (!response.ok) throw new Error('Failed to fetch channels');
       const data = await response.json();
-      console.log('All channels data:', data);
+      console.log('[BrowseChannels] Got data:', data);
       return data;
     },
-    // Ensure query is refetched when modal is opened
-    enabled: isOpen
+    enabled: isOpen && !!userId,
+    refetchOnMount: true
   });
 
-  // Filter channels based on membership and type
-  const publicChannels = allChannels.filter(channel => 
-    channel.type === 'PUBLIC' && 
-    !contextChannels.some(c => c.id === channel.id)
-  );
+  console.log('[BrowseChannels] Component state:', {
+    isOpen,
+    userId,
+    isLoading,
+    error,
+    channelsLength: channels?.length,
+    firstChannel: channels?.[0]
+  });
 
-  const joinedChannels = contextChannels.filter(channel => 
-    channel.type === 'PUBLIC' || channel.type === 'PRIVATE'
-  );
+  // Fetch joined channels for the Joined tab
+  const { data: joinedChannels = [], isLoading: isLoadingJoined } = useQuery({
+    queryKey: ['channels-joined', isOpen],
+    queryFn: async () => {
+      const token = await getToken();
+      if (!token) throw new Error('No authentication token available');
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels?view=leave`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) throw new Error('Failed to fetch joined channels');
+      return response.json();
+    },
+    enabled: isOpen
+  });
 
   const handleJoinChannel = async (channelId: string) => {
     try {
       setIsJoining(channelId);
       await joinChannel(channelId);
-      // Invalidate and refetch
-      await queryClient.invalidateQueries({ queryKey: ['all-channels'] });
+      
+      // Refresh both queries to update the UI
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['channels', 'browse'] }),
+        queryClient.invalidateQueries({ queryKey: ['channels-joined'] }),
+        refreshChannels()
+      ]);
+      
       toast({
         title: 'Success',
         description: 'You have joined the channel',
@@ -84,8 +109,14 @@ export function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsModalProp
     try {
       setIsLeaving(channelId);
       await leaveChannel(channelId);
-      // Invalidate and refetch
-      await queryClient.invalidateQueries({ queryKey: ['all-channels'] });
+      
+      // Refresh both queries to update the UI
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['channels', 'browse'] }),
+        queryClient.invalidateQueries({ queryKey: ['channels-joined'] }),
+        refreshChannels()
+      ]);
+      
       toast({
         title: 'Success',
         description: 'You have left the channel',
@@ -101,6 +132,10 @@ export function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsModalProp
       setIsLeaving(null);
     }
   };
+
+  if (error) {
+    console.error('[BrowseChannels] Error fetching channels:', error);
+  }
 
   return (
     <Dialog 
@@ -122,28 +157,34 @@ export function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsModalProp
                 <div className="flex justify-center items-center h-full">
                   <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
-              ) : publicChannels.length === 0 ? (
+              ) : channels.length === 0 ? (
                 <p className="text-center text-sm text-muted-foreground">No public channels available</p>
               ) : (
                 <div className="space-y-4">
-                  {publicChannels.map((channel) => (
+                  {channels.map((channel: Channel) => (
                     <div key={channel.id} className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium"># {channel.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {channel.members?.length || 0} members
+                          {channel._count.members} members
                         </p>
                       </div>
-                      <Button 
-                        onClick={() => handleJoinChannel(channel.id)}
-                        disabled={isJoining === channel.id}
-                      >
-                        {isJoining === channel.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          'Join'
-                        )}
-                      </Button>
+                      {channel.isJoined ? (
+                        <Button variant="secondary" disabled>
+                          Joined
+                        </Button>
+                      ) : (
+                        <Button 
+                          onClick={() => handleJoinChannel(channel.id)}
+                          disabled={isJoining === channel.id}
+                        >
+                          {isJoining === channel.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            'Join'
+                          )}
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -152,7 +193,7 @@ export function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsModalProp
           </TabsContent>
           <TabsContent value="joined">
             <ScrollArea className="mt-4 h-[300px] rounded-md border p-4">
-              {isLoading ? (
+              {isLoadingJoined ? (
                 <div className="flex justify-center items-center h-full">
                   <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
@@ -160,12 +201,12 @@ export function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsModalProp
                 <p className="text-center text-sm text-muted-foreground">You haven&apos;t joined any channels yet</p>
               ) : (
                 <div className="space-y-4">
-                  {joinedChannels.map((channel) => (
+                  {joinedChannels.map((channel: Channel) => (
                     <div key={channel.id} className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium"># {channel.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {channel.members?.length || 0} members
+                          {channel._count.members} members
                         </p>
                       </div>
                       <Button 

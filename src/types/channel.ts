@@ -9,16 +9,25 @@ export enum ChannelType {
 export interface Channel {
   id: string;
   name: string;
-  type: ChannelType;
-  ownerId: string;
   description?: string;
+  type: ChannelType;
+  createdById: string;
   createdAt: string;
   updatedAt: string;
-  _count?: {
-    members: number;
+  isJoined: boolean;
+  _count: {
     messages: number;
+    members: number;
   };
-  members?: ChannelMember[];
+  members?: Array<{
+    userId: string;
+    role: 'OWNER' | 'ADMIN' | 'MEMBER';
+    user: {
+      id: string;
+      name: string;
+      imageUrl: string | null;
+    };
+  }>;
 }
 
 export interface CreateChannelDto {
@@ -30,12 +39,13 @@ export interface CreateChannelDto {
 export interface ChannelMember {
   userId: string;
   channelId: string;
-  role: string;
+  role: 'OWNER' | 'ADMIN' | 'MEMBER';
   joinedAt: string;
+  lastReadAt: string;
   user?: {
     id: string;
     name: string;
-    imageUrl?: string;
+    imageUrl: string | null;
   };
 }
 
@@ -46,9 +56,7 @@ export interface ChannelResponse {
 }
 
 export interface ChannelListResponse {
-  success: boolean;
-  data?: Channel[];
-  error?: string;
+  channels: Channel[];
 }
 
 export interface ChannelMutationResponse {
@@ -59,16 +67,8 @@ export interface ChannelMutationResponse {
 
 export interface ChannelLeaveResponse {
   success: boolean;
+  wasDeleted: boolean;
   error?: string;
-}
-
-export interface ChannelWithDetails extends Channel {
-  _count: {
-    members: number;
-    messages: number;
-  };
-  members: ChannelMember[];
-  isMember?: boolean;
 }
 
 export interface OnlineUsers {

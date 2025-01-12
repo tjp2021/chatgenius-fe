@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useSocket } from '@/providers/socket-provider';
 import { useChannelContext } from '@/contexts/channel-context';
-import { Channel, ChannelType, ChannelWithDetails } from '@/types/channel';
+import { Channel, ChannelType } from '@/types/channel';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
 import { BrowseChannelsModal } from './browse-channels-modal';
@@ -50,26 +50,30 @@ export function ChannelSidebar() {
   };
 
   // Transform Channel to ChannelWithDetails
-  const transformToChannelWithDetails = (channel: Channel): ChannelWithDetails => ({
+  const transformToChannelWithDetails = (channel: Channel): Channel => ({
     ...channel,
     _count: {
       members: channel._count?.members || 0,
       messages: channel._count?.messages || 0
     },
-    members: channel.members || [],
-    isMember: channel.type === ChannelType.DM || channel.members?.some(member => member.userId === userId) || false
+    members: channel.members || []
   });
 
   // Filter and transform channels by type
-  const publicChannels = channels
-    .filter(channel => channel.type === ChannelType.PUBLIC)
-    .map(transformToChannelWithDetails);
-  const privateChannels = channels
-    .filter(channel => channel.type === ChannelType.PRIVATE)
-    .map(transformToChannelWithDetails);
-  const directMessages = channels
-    .filter(channel => channel.type === ChannelType.DM)
-    .map(transformToChannelWithDetails);
+  console.log('[ChannelSidebar] Filtering channels:', channels);
+  
+  const publicChannels = channels?.filter((channel: Channel) => {
+    console.log('[ChannelSidebar] Channel:', channel);
+    return channel?.type === ChannelType.PUBLIC;
+  }) ?? [];
+  
+  const privateChannels = channels?.filter((channel: Channel) => 
+    channel?.type === ChannelType.PRIVATE
+  ) ?? [];
+  
+  const directMessages = channels?.filter((channel: Channel) => 
+    channel?.type === ChannelType.DM
+  ) ?? [];
 
   const handleSetChannelToLeave = (channelId: string) => {
     const channel = channels.find(c => c.id === channelId);

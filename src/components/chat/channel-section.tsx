@@ -1,6 +1,6 @@
 'use client';
 
-import { ChannelType, ChannelWithDetails, OnlineUsers } from '@/types/channel';
+import { ChannelType, Channel, OnlineUsers } from '@/types/channel';
 import { cn } from '@/lib/utils';
 import { Hash, Lock, Users, ChevronDown, ChevronRight, MoreVertical } from 'lucide-react';
 import { Menu } from '@headlessui/react';
@@ -8,7 +8,7 @@ import Image from 'next/image';
 
 interface ChannelSectionProps {
   title: string;
-  channels: ChannelWithDetails[];
+  channels: Channel[];
   type: ChannelType;
   isExpanded: boolean;
   onToggle: () => void;
