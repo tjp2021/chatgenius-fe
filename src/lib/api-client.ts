@@ -90,7 +90,7 @@ export class ApiClient {
   }
 
   async searchUsers(query: string): Promise<SearchUsersResponse> {
-    return this.get<SearchUsersResponse>('/api/users/search', { query });
+    return this.get<SearchUsersResponse>('/users/search', { query });
   }
 }
 

@@ -16,7 +16,7 @@ export function useWelcomePage(): UseWelcomePageReturn {
   const { data: channelGroups, isLoading, error } = useQuery<ChannelGroups>({
     queryKey: ['channels'],
     queryFn: async () => {
-      const response = await fetch('/api/channels');
+      const response = await fetch('/channels');
       if (!response.ok) {
         throw new Error('Failed to fetch channels');
       }

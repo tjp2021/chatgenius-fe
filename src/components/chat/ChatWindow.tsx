@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSocket } from '@/providers/socket-provider';
 import { Message } from '@/types/message';
 import { useToast } from '@/components/ui/use-toast';
@@ -33,6 +33,7 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
   const [isJoined, setIsJoined] = useState(false);
   const [messageStatuses, setMessageStatuses] = useState<MessageStatus[]>([]);
   const [localMessages, setLocalMessages] = useState<Message[]>(initialMessages);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   
   // Use the message history hook
   const {
@@ -44,7 +45,33 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
   } = useMessageHistory();
 
   // Combine history messages with local messages
-  const messages = [...historyMessages, ...localMessages];
+  const messages = useMemo(() => {
+    // Create a Set of message IDs to track duplicates
+    const messageIds = new Set<string>();
+    const combinedMessages: Message[] = [];
+
+    // Add history messages first
+    historyMessages.forEach(msg => {
+      if (!messageIds.has(msg.id)) {
+        messageIds.add(msg.id);
+        combinedMessages.push(msg);
+      }
+    });
+
+    // Add local messages, avoiding duplicates
+    localMessages.forEach(msg => {
+      // For temporary messages (those being sent), always include them
+      if (msg.id.startsWith('temp-') || !messageIds.has(msg.id)) {
+        messageIds.add(msg.id);
+        combinedMessages.push(msg);
+      }
+    });
+
+    // Sort messages by creation time
+    return combinedMessages.sort((a, b) => 
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+  }, [historyMessages, localMessages]);
 
   // Get channel name
   const channel = channels.find(c => c.id === channelId);
@@ -245,6 +272,25 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
     }
   };
 
+  // Function to scroll to bottom
+  const scrollToBottom = (behavior: 'auto' | 'smooth' = 'auto') => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
+  };
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    scrollToBottom('smooth');
+  }, [messages]);
+
+  // Scroll to bottom on initial load
+  useEffect(() => {
+    if (historyMessages.length > 0) {
+      scrollToBottom();
+    }
+  }, [historyMessages]);
+
   return (
     <div className="flex flex-col h-[600px] w-full max-w-2xl mx-auto overflow-hidden">
       {/* Header */}
@@ -262,7 +308,10 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
       </div>
 
       {/* Messages */}
-      <div className="flex-1 p-4 overflow-y-auto bg-gray-50 space-y-4">
+      <div 
+        ref={messagesContainerRef}
+        className="flex-1 p-4 overflow-y-auto bg-gray-50 space-y-4"
+      >
         {error && (
           <div className="text-center text-red-500 py-2">
             {error}

@@ -14,7 +14,7 @@ export function useChannels() {
     const fetchChannels = async () => {
       try {
         const token = await getToken();
-        const response = await fetch('/api/channels', {
+        const response = await fetch('/channels', {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -35,7 +35,7 @@ export function useChannels() {
   const joinChannel = async (channelId: string): Promise<Channel> => {
     try {
       const token = await getToken();
-      const response = await fetch(`/api/channels/${channelId}/join`, {
+      const response = await fetch(`/channels/${channelId}/join`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -53,7 +53,7 @@ export function useChannels() {
   const leaveChannel = async (channelId: string): Promise<void> => {
     try {
       const token = await getToken();
-      const response = await fetch(`/api/channels/${channelId}/leave`, {
+      const response = await fetch(`/channels/${channelId}/leave`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`

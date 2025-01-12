@@ -71,12 +71,19 @@ export function useMessageHistory(): UseMessageHistoryReturn {
       }
       
       setMessages(prev => {
-        // If we're loading more (have cursor), append to existing messages
+        // If we're loading more (have cursor), prepend to existing messages
+        // since we're loading older messages
         if (cursor) {
-          return [...prev, ...data.messages];
+          // Remove any duplicates by message ID
+          const existingIds = new Set(prev.map(m => m.id));
+          const newMessages = data.messages.filter((m: Message) => !existingIds.has(m.id));
+          return [...newMessages, ...prev];
         }
         // Otherwise replace existing messages
-        return data.messages;
+        // Sort messages by createdAt to ensure correct order
+        return data.messages.sort((a: Message, b: Message) => 
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
       });
       
       setNextCursor(data.nextCursor);

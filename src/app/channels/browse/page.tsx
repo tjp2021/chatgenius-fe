@@ -38,7 +38,7 @@ export default function BrowseChannelsPage() {
   const { data: channels = [], isLoading } = useQuery({
     queryKey: ['channels', 'browse', 'public', search, sortBy, sortOrder],
     queryFn: async () => {
-      const response = await api.get('/api/channels/browse/public', {
+      const response = await api.get('/channels/browse/public', {
         params: {
           search,
           sortBy,

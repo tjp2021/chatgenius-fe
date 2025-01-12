@@ -15,7 +15,7 @@ export function UserAvatar({ userId, className }: UserAvatarProps) {
   const { data: user } = useQuery({
     queryKey: ['users', userId],
     queryFn: async () => {
-      const response = await api.get(`/api/users/${userId}`);
+      const response = await api.get(`/users/${userId}`);
       return response.data;
     }
   });

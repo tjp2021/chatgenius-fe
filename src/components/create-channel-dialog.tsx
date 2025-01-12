@@ -121,7 +121,7 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
         })
       };
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -12,7 +12,7 @@ export function useMessages(channelId: string) {
   useEffect(() => {
     const fetchMessages = async () => {
       try {
-        const response = await fetch(`/api/channels/${channelId}/messages`);
+        const response = await fetch(`/channels/${channelId}/messages`);
         if (!response.ok) throw new Error('Failed to fetch messages');
         const data = await response.json();
         setMessages(data);

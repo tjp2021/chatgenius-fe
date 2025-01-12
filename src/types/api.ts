@@ -13,18 +13,18 @@ export interface APIErrorResponse {
 // API Routes (matching the backend API)
 export const API_ROUTES = {
   // Auth
-  AUTH_TOKEN: '/api/auth/token',
+  AUTH_TOKEN: '/auth/token',
   
   // Channels
-  CHANNELS: '/api/channels',
-  CHANNEL_MESSAGES: (channelId: string) => `/api/channels/${channelId}/messages`,
+  CHANNELS: '/channels',
+  CHANNEL_MESSAGES: (channelId: string) => `/channels/${channelId}/messages`,
   
   // Messages
-  MESSAGES: '/api/messages',
+  MESSAGES: '/messages',
   
   // Users
-  USERS: '/api/users',
-  USER_PRESENCE: '/api/users/presence'
+  USERS: '/users',
+  USER_PRESENCE: '/users/presence'
 } as const;
 
 // Socket Events (matching backend socket events)
