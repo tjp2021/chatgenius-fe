@@ -5,11 +5,13 @@ import { useSocket } from '@/providers/socket-provider';
 import { Message } from '@/types/message';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@clerk/nextjs';
+import type { UserResource } from '@clerk/types';
 import { CheckIcon, CheckCheckIcon, Send, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useChannelContext } from '@/contexts/channel-context';
 import { cn } from '@/lib/utils';
+import { useUser } from '@clerk/nextjs';
 
 interface ChatWindowProps {
   channelId: string;
@@ -24,7 +26,8 @@ interface MessageStatus {
 export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps) {
   const { socket, isConnected } = useSocket();
   const { toast } = useToast();
-  const { userId, user } = useAuth();
+  const { userId } = useAuth();
+  const { user } = useUser();
   const { channels } = useChannelContext();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [newMessage, setNewMessage] = useState('');
@@ -51,55 +54,94 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
   useEffect(() => {
     if (!socket) return;
 
-    const handleMessage = (message: Message, eventType: 'new' | 'received') => {
-      console.log('[Socket] Received message:', {
-        id: message.id,
-        content: message.content,
-        channelId: message.channelId,
-        userId: message.userId,
-        user: message.user
-      });
+    // Handle new messages (either pending or delivered)
+    const handleNewMessage = (message: Message) => {
+      console.log('[Socket] Received new message:', message);
       
       if (message.channelId === channelId) {
-        if (eventType === 'new') {
-          setMessages(prev => {
-            // Check if this is a confirmation of a temp message
-            const tempMessageIndex = prev.findIndex(m => 
-              m.id.startsWith('temp-') && 
-              m.content === message.content && 
-              m.userId === message.userId
-            );
-            
-            if (tempMessageIndex !== -1) {
-              // Replace temp message with confirmed message
-              const newMessages = [...prev];
-              newMessages[tempMessageIndex] = message;
-              return newMessages;
-            }
-            
-            // Check if message already exists
-            const messageExists = prev.some(m => m.id === message.id);
-            return messageExists ? prev : [...prev, message];
-          });
-        } else if (eventType === 'received') {
-          setMessageStatuses(prev => 
-            prev.map(status => {
-              if (status.id === message.id) {
-                return { ...status, status: 'delivered' };
-              }
-              return status;
-            })
+        setMessages(prev => {
+          // Check if we have a temporary version of this message
+          const tempMessage = prev.find(m => 
+            m.content === message.content && 
+            m.userId === message.userId &&
+            m.id.startsWith('temp-')
           );
-        }
+          
+          if (tempMessage) {
+            // Replace temporary message with the saved one
+            return prev.map(m => m.id === tempMessage.id ? message : m);
+          }
+          
+          // Check if message already exists
+          const messageExists = prev.some(m => m.id === message.id);
+          if (messageExists) return prev;
+          
+          return [...prev, message];
+        });
+        
+        setMessageStatuses(prev => {
+          const tempStatus = prev.find(s => 
+            s.id.startsWith('temp-') && 
+            messages.find(m => m.id === s.id)?.content === message.content
+          );
+          
+          if (tempStatus) {
+            // Update the status of the temporary message
+            return prev.map(s => 
+              s.id === tempStatus.id 
+                ? { id: message.id, status: 'delivered' }
+                : s
+            );
+          }
+          
+          return [...prev, { id: message.id, status: 'delivered' }];
+        });
       }
     };
 
-    socket.onNewMessage(handleMessage);
+    // Handle message persistence confirmation
+    const handleMessageSaved = ({ tempId, message }: { tempId: string, message: Message }) => {
+      console.log('[Socket] Message saved:', { tempId, message });
+      
+      if (message.channelId === channelId) {
+        setMessages(prev => 
+          prev.map(m => m.id === tempId ? message : m)
+        );
+        setMessageStatuses(prev => 
+          prev.map(status => 
+            status.id === tempId 
+              ? { id: message.id, status: 'sent' }
+              : status
+          )
+        );
+      }
+    };
+
+    // Handle message errors
+    const handleMessageError = ({ tempId, error }: { tempId: string, error: string }) => {
+      console.log('[Socket] Message error:', { tempId, error });
+      
+      toast({
+        title: 'Error',
+        description: error || 'Failed to send message',
+        variant: 'destructive'
+      });
+
+      // Remove the temporary message
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setMessageStatuses(prev => prev.filter(status => status.id !== tempId));
+    };
+
+    socket.on('message:new', handleNewMessage);
+    socket.on('message:saved', handleMessageSaved);
+    socket.on('message:error', handleMessageError);
 
     return () => {
-      socket.offNewMessage(handleMessage);
+      socket.off('message:new', handleNewMessage);
+      socket.off('message:saved', handleMessageSaved);
+      socket.off('message:error', handleMessageError);
     };
-  }, [socket, channelId]);
+  }, [socket, channelId, toast]);
 
   const handleJoinChannel = async () => {
     if (!socket) return;
@@ -138,7 +180,7 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
     setNewMessage(''); // Clear input immediately
     
     try {
-      // Add message to state immediately with a temporary ID that includes userId for uniqueness
+      // Create temporary message
       const tempMessage: Message = {
         id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${userId}`,
         content,
@@ -154,38 +196,23 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
         }
       };
       
+      // Add temporary message to UI
       setMessages(prev => [...prev, tempMessage]);
       setMessageStatuses(prev => [...prev, { id: tempMessage.id, status: 'sending' }]);
 
-      const response = await socket.sendMessage<Message>(channelId, content, tempMessage.id);
-      
-      if (response.success && response.data) {
-        // Replace temp message with confirmed message
-        setMessages(prev => prev.map(msg => 
-          msg.id === tempMessage.id ? response.data! : msg
-        ));
-        setMessageStatuses(prev => prev.map(status => 
-          status.id === tempMessage.id 
-            ? { id: response.data!.id, status: 'sent' }
-            : status
-        ));
-      } else {
-        toast({
-          title: 'Warning',
-          description: 'Message sent but no confirmation received',
-          variant: 'default'
-        });
-      }
+      // Send message through socket
+      socket.emit('message:send', {
+        content,
+        channelId,
+        tempId: tempMessage.id
+      });
     } catch (error) {
       toast({
         title: 'Error',
         description: 'Failed to send message',
         variant: 'destructive'
       });
-      setNewMessage(content); // Restore the message if sending failed
-      // Remove the temporary message
-      setMessages(prev => prev.filter(msg => !msg.id.startsWith('temp-')));
-      setMessageStatuses(prev => prev.filter(status => !status.id.startsWith('temp-')));
+      setNewMessage(content); // Restore the message content
     }
   };
 
