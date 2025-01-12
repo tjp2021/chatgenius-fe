@@ -2,7 +2,7 @@
 export interface User {
   id: string;
   name: string;
-  username: string;
+  username?: string;
   imageUrl?: string;
 } 
 

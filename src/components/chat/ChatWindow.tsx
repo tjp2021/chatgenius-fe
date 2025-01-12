@@ -12,6 +12,7 @@ import { useChannelContext } from '@/contexts/channel-context';
 import { cn } from '@/lib/utils';
 import { useUser } from '@clerk/nextjs';
 import { useMessageHistory } from '@/hooks/use-message-history';
+import { MessageReactions } from './message-reactions';
 
 interface ChatWindowProps {
   channelId: string;
@@ -232,7 +233,8 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
         user: {
           id: userId || '',
           name: user?.fullName || user?.username || 'Unknown User'
-        }
+        },
+        reactions: []
       };
       
       // Add temporary message to UI
@@ -345,6 +347,14 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
               )}>
                 {message.content}
               </div>
+              
+              {/* Add MessageReactions component */}
+              {userId && (
+                <MessageReactions
+                  message={message}
+                  currentUserId={userId}
+                />
+              )}
             </div>
             <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
               <span>{new Date(message.createdAt).toLocaleTimeString()}</span>

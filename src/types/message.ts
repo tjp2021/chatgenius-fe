@@ -1,3 +1,6 @@
+import { User } from './user';
+import { Reaction } from './reaction';
+
 export enum MessageEvent {
   NEW = 'NEW',
   SEND = 'SEND',
@@ -30,13 +33,10 @@ export interface Message {
   userId: string;
   createdAt: string;
   updatedAt: string;
-  isRead: boolean;
-  isDelivered: boolean;
-  user: {
-    id: string;
-    name: string;
-    imageUrl?: string;
-  };
+  user: User;
+  reactions: Reaction[];
+  isRead?: boolean;
+  isDelivered?: boolean;
 }
 
 export interface MessagePayload {

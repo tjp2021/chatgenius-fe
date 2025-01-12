@@ -156,14 +156,14 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
       fetchChannels();
     };
 
-    socket.onChannelCreated(handleChannelCreated);
-    socket.onChannelUpdated(handleChannelUpdated);
-    socket.onChannelDeleted(handleChannelDeleted);
+    socket.on('channel.created', handleChannelCreated);
+    socket.on('channel.updated', handleChannelUpdated);
+    socket.on('channel.deleted', handleChannelDeleted);
 
     return () => {
-      socket.offChannelCreated(handleChannelCreated);
-      socket.offChannelUpdated(handleChannelUpdated);
-      socket.offChannelDeleted(handleChannelDeleted);
+      socket.off('channel.created', handleChannelCreated);
+      socket.off('channel.updated', handleChannelUpdated);
+      socket.off('channel.deleted', handleChannelDeleted);
     };
   }, [socket, fetchChannels]);
 
