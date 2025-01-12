@@ -2,42 +2,49 @@
 
 import { auth } from '@clerk/nextjs';
 
-interface SearchUsersResponse {
-  users: Array<{
-    id: string;
-    name: string;
-    imageUrl: string;
-    isOnline: boolean;
-  }>;
+interface User {
+  id: string;
+  name: string;
+  imageUrl: string;
+  isOnline: boolean;
 }
 
 export class ApiClient {
   private baseUrl: string;
   private defaultHeaders: HeadersInit;
+  private token: string | null;
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
+    this.token = null;
     this.defaultHeaders = {
       'Content-Type': 'application/json',
     };
   }
 
-  private async getAuthHeaders(): Promise<HeadersInit> {
-    const token = await auth().getToken();
+  setToken(token: string | null) {
+    this.token = token;
+  }
+
+  private getHeaders(): HeadersInit {
     return {
       ...this.defaultHeaders,
-      Authorization: `Bearer ${token}`,
+      ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
     };
   }
 
   async get<T>(path: string, params = {}, retries = 3, backoff = 1000): Promise<T> {
     const queryString = new URLSearchParams(params).toString();
     const url = `${this.baseUrl}${path}${queryString ? `?${queryString}` : ''}`;
-    const headers = await this.getAuthHeaders();
+    const headers = this.getHeaders();
 
     try {
       const response = await fetch(url, { headers });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        console.error('API error:', errorData);
+        throw new Error(errorData?.message || `HTTP error! status: ${response.status}`);
+      }
       return (await response.json()) as T;
     } catch (error) {
       if (retries > 0) {
@@ -50,7 +57,7 @@ export class ApiClient {
 
   async post<T>(path: string, body: unknown): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    const headers = await this.getAuthHeaders();
+    const headers = this.getHeaders();
 
     const response = await fetch(url, {
       method: 'POST',
@@ -64,7 +71,7 @@ export class ApiClient {
 
   async put<T>(path: string, body: unknown): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    const headers = await this.getAuthHeaders();
+    const headers = this.getHeaders();
 
     const response = await fetch(url, {
       method: 'PUT',
@@ -78,7 +85,7 @@ export class ApiClient {
 
   async delete<T>(path: string): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    const headers = await this.getAuthHeaders();
+    const headers = this.getHeaders();
 
     const response = await fetch(url, {
       method: 'DELETE',
@@ -89,8 +96,12 @@ export class ApiClient {
     return (await response.json()) as T;
   }
 
-  async searchUsers(query: string): Promise<SearchUsersResponse> {
-    return this.get<SearchUsersResponse>('/users/search', { query });
+  async searchUsers(query: string): Promise<User[]> {
+    if (!query.trim()) {
+      return [];
+    }
+    console.log('Searching users with query:', query);
+    return this.get<User[]>('/users/search', { query });
   }
 }
 

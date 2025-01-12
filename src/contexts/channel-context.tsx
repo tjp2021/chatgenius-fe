@@ -3,6 +3,8 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { Channel, ChannelType } from '@/types/channel';
 import { useAuth } from '@clerk/nextjs';
+import React from 'react';
+import { useSocket } from '@/providers/socket-provider';
 
 interface ChannelContextType {
   channels: Channel[];
@@ -21,6 +23,7 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
   const { getToken } = useAuth();
+  const { socket } = useSocket();
 
   const fetchChannels = async () => {
     try {
@@ -122,6 +125,36 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
       throw error;
     }
   };
+
+  // Add socket event handlers
+  React.useEffect(() => {
+    if (!socket) return;
+
+    const handleChannelCreated = (data: any) => {
+      console.log('[Channel] Created:', data);
+      fetchChannels();
+    };
+
+    const handleChannelUpdated = (data: any) => {
+      console.log('[Channel] Updated:', data);
+      fetchChannels();
+    };
+
+    const handleChannelDeleted = (data: any) => {
+      console.log('[Channel] Deleted:', data);
+      fetchChannels();
+    };
+
+    socket.onChannelCreated(handleChannelCreated);
+    socket.onChannelUpdated(handleChannelUpdated);
+    socket.onChannelDeleted(handleChannelDeleted);
+
+    return () => {
+      socket.offChannelCreated(handleChannelCreated);
+      socket.offChannelUpdated(handleChannelUpdated);
+      socket.offChannelDeleted(handleChannelDeleted);
+    };
+  }, [socket, fetchChannels]);
 
   return (
     <ChannelContext.Provider value={{

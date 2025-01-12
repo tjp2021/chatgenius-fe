@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,8 +31,19 @@ export function CreateDMModal({ isOpen, onClose }: CreateDMModalProps) {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const { refreshChannels } = useChannelContext();
   const { getToken } = useAuth();
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Add cleanup for timeout
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
   const searchUsers = async (query: string) => {
+    console.log('searchUsers called with query:', query);
     if (!query.trim()) {
       setUsers([]);
       return;
@@ -41,13 +52,20 @@ export function CreateDMModal({ isOpen, onClose }: CreateDMModalProps) {
     setIsLoading(true);
     try {
       const token = await getToken();
-      const searchUrl = `${process.env.NEXT_PUBLIC_API_URL}/users/search?q=${encodeURIComponent(query)}`;
-      console.log('Search URL:', searchUrl);
+      if (!token) {
+        throw new Error('No authentication token available');
+      }
+
+      const searchUrl = `${process.env.NEXT_PUBLIC_API_URL}/users/search?query=${encodeURIComponent(query)}`;
+      console.log('Making search request to:', searchUrl);
       
       const response = await fetch(searchUrl, {
+        method: 'GET',
         headers: {
-          Authorization: `Bearer ${token}`,
-        },
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
       });
 
       if (!response.ok) {
@@ -58,8 +76,13 @@ export function CreateDMModal({ isOpen, onClose }: CreateDMModalProps) {
 
       const data = await response.json();
       console.log('Search response:', data);
-      const userList = Array.isArray(data) ? data : data?.users || [];
-      setUsers(userList.filter((user: { id?: string; name?: string }) => user.id && user.name));
+      
+      if (!data.users || !Array.isArray(data.users)) {
+        console.error('Invalid response format:', data);
+        throw new Error('Invalid response format from server');
+      }
+      
+      setUsers(data.users.filter((user: { id?: string; name?: string }) => user.id && user.name));
     } catch (error) {
       console.error('Error searching users:', error);
       toast({
@@ -74,18 +97,27 @@ export function CreateDMModal({ isOpen, onClose }: CreateDMModalProps) {
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
+    console.log('Search value changed:', value);
     setSearch(value);
     
     if (!value.trim()) {
+      console.log('Empty search, clearing users');
       setUsers([]);
       return;
     }
     
-    const timeoutId = setTimeout(() => {
-      searchUsers(value);
-    }, 300);
-
-    return () => clearTimeout(timeoutId);
+    if (value.length >= 2) {
+      console.log('Search length >= 2, triggering search');
+      // Clear any existing timeout
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      
+      timeoutRef.current = setTimeout(() => {
+        console.log('Executing search for:', value);
+        searchUsers(value);
+      }, 300);
+    }
   };
 
   const handleCreateDM = async () => {

@@ -16,7 +16,10 @@ const SOCKET_EVENTS = {
     JOINED: 'channel:joined',
     LEAVE: 'channel:leave',
     LEFT: 'channel:left',
-    ERROR: 'channel:error'
+    ERROR: 'channel:error',
+    CREATED: 'channel:created',
+    UPDATED: 'channel:updated',
+    DELETED: 'channel:deleted'
   },
   ROOM: {
     MEMBER_JOINED: 'room:member:joined',
@@ -377,5 +380,29 @@ export class ChatSocketClient {
 
   offChannelError(callback: (error: Error) => void): void {
     this.socket.off(SOCKET_EVENTS.CHANNEL.ERROR, callback);
+  }
+
+  onChannelCreated(callback: (data: ChannelEventPayload) => void): void {
+    this.socket.on(SOCKET_EVENTS.CHANNEL.CREATED, callback);
+  }
+
+  offChannelCreated(callback: (data: ChannelEventPayload) => void): void {
+    this.socket.off(SOCKET_EVENTS.CHANNEL.CREATED, callback);
+  }
+
+  onChannelUpdated(callback: (data: ChannelEventPayload) => void): void {
+    this.socket.on(SOCKET_EVENTS.CHANNEL.UPDATED, callback);
+  }
+
+  offChannelUpdated(callback: (data: ChannelEventPayload) => void): void {
+    this.socket.off(SOCKET_EVENTS.CHANNEL.UPDATED, callback);
+  }
+
+  onChannelDeleted(callback: (data: ChannelEventPayload) => void): void {
+    this.socket.on(SOCKET_EVENTS.CHANNEL.DELETED, callback);
+  }
+
+  offChannelDeleted(callback: (data: ChannelEventPayload) => void): void {
+    this.socket.off(SOCKET_EVENTS.CHANNEL.DELETED, callback);
   }
 }

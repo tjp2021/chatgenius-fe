@@ -121,6 +121,7 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
         })
       };
 
+      console.log('Creating channel with:', requestBody);
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
         method: 'POST',
         headers: {
@@ -131,10 +132,13 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
       });
       
       if (!response.ok) {
-        throw new Error('Failed to create channel');
+        const errorData = await response.json().catch(() => null);
+        console.error('Channel creation error:', errorData);
+        throw new Error(errorData?.message || 'Failed to create channel');
       }
 
       const channel = await response.json();
+      console.log('Channel created:', channel);
 
       // First close the dialog and reset form
       onOpenChange(false);
@@ -148,13 +152,20 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
       // Then refresh channels to update the UI
       await refreshChannels();
       
+      // Show success toast
+      toast({
+        title: 'Success',
+        description: `Channel "${data.name}" has been created`,
+      });
+
       // Finally, navigate to the new channel
       router.push(`/channels/${channel.id}`);
 
     } catch (error) {
+      console.error('Error creating channel:', error);
       toast({
         title: 'Error',
-        description: 'Failed to create channel',
+        description: error instanceof Error ? error.message : 'Failed to create channel. Please try again.',
         variant: 'destructive',
       });
     } finally {

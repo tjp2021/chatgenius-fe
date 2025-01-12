@@ -8,7 +8,7 @@ export const searchUsers = async (
 ): Promise<SearchUsersResponse> => {
   const token = await auth().getToken();
   
-  const url = `${process.env.NEXT_PUBLIC_API_URL}/users/search?search=${search}&page=${page}&limit=${limit}`;
+  const url = `${process.env.NEXT_PUBLIC_API_URL}/users/search?query=${search}&page=${page}&limit=${limit}`;
 
   try {
     const response = await fetch(url, {
