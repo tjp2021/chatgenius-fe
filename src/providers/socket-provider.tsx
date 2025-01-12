@@ -33,6 +33,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           cb({ token, userId });
         } catch (error) {
           console.error('Auth error:', error);
+          cb(new Error('Authentication failed'));
         }
       }
     });
@@ -51,6 +52,15 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     socketInstance.on('disconnect', () => {
       console.log('Socket disconnected');
       setIsConnected(false);
+    });
+
+    // Add error logging for socket events
+    socketInstance.onAny((event, ...args) => {
+      console.log('Socket event:', event, args);
+    });
+
+    socketInstance.onAnyOutgoing((event, ...args) => {
+      console.log('Socket outgoing event:', event, args);
     });
 
     // Connect after setting up listeners

@@ -186,18 +186,25 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
   const handleJoinChannel = async () => {
     if (!socket) return;
     try {
-      const response = await socket.joinChannel(channelId);
-      if (response.success) {
-        setIsJoined(true);
-      } else {
-        toast({
-          title: 'Error',
-          description: response.error || 'Failed to join channel',
-          variant: 'destructive'
-        });
-      }
+      // Emit join_channel event and wait for response
+      socket.emit('join_channel', { channelId }, (response: { success: boolean; error?: string }) => {
+        if (response.success) {
+          setIsJoined(true);
+        } else {
+          toast({
+            title: 'Error',
+            description: response.error || 'Failed to join channel',
+            variant: 'destructive'
+          });
+        }
+      });
     } catch (error) {
-      console.error('Failed to join channel:', error);
+      console.error('Join channel error:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to join channel',
+        variant: 'destructive'
+      });
     }
   };
 
