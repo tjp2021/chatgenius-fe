@@ -17,6 +17,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUser } from "@clerk/nextjs";
 import { UserSearch } from './user-search';
 import { useSocket } from '@/providers/socket-provider';
+import { ChannelType } from '@/types/channel';
 
 const channelSchema = z.discriminatedUnion('type', [
   // Public channel schema
@@ -72,56 +73,101 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
 
   // Update type when tab changes
   useEffect(() => {
-    form.reset({
-      type: activeTab,
-      name: '',
-      description: '',
-      members: []
-    });
+    const currentMembers = form.getValues('members');
+    
+    let formData;
+    if (activeTab === 'dm') {
+      formData = {
+        type: 'dm' as const,
+        members: currentMembers || [],
+        name: undefined,
+        description: undefined
+      };
+    } else if (activeTab === 'private') {
+      formData = {
+        type: 'private' as const,
+        name: form.getValues('name') || '',
+        description: form.getValues('description'),
+        members: currentMembers || []
+      };
+    } else {
+      formData = {
+        type: 'public' as const,
+        name: form.getValues('name') || '',
+        description: form.getValues('description'),
+        members: []
+      };
+    }
+    
+    console.log('[CreateChannel] Resetting form with:', formData);
+    form.reset(formData);
   }, [activeTab, form]);
 
   const handleAddMember = (userId: string) => {
-    const currentMembers = form.getValues('members');
+    console.log('\n=== MEMBER SELECTION START ===');
+    console.log('User clicked:', userId);
+    console.log('Current Tab:', activeTab);
+    
+    const currentMembers = form.getValues('members') || [];
+    console.log('Current Members List:', currentMembers);
+    
     const newMembers = currentMembers.includes(userId)
       ? currentMembers.filter(id => id !== userId)
       : [...currentMembers, userId];
+    
+    console.log('Action:', currentMembers.includes(userId) ? 'REMOVING' : 'ADDING');
+    console.log('Updated Members List:', newMembers);
     
     form.setValue('members', newMembers, { 
       shouldTouch: true, 
       shouldDirty: true, 
       shouldValidate: true 
     });
+
+    // Verify the update was successful
+    const verifyMembers = form.getValues('members');
+    console.log('Form Members After Update:', verifyMembers);
+    console.log('Form Current Values:', form.getValues());
+    console.log('=== MEMBER SELECTION END ===\n');
   };
 
   const handleSubmit = async (data: ChannelFormData) => {
     try {
+      console.log('\n=== CHANNEL CREATION START ===');
+      console.log('Active Tab:', activeTab);
+      console.log('Current User:', user?.id);
+      console.log('Raw Form Data:', data);
+      console.log('Form Members:', data.members);
+      console.log('Form Current State:', form.getValues());
+      console.log('Form Errors:', form.formState.errors);
+      
       setIsLoading(true);
       const token = await getToken();
 
-      // For private channels, ensure we have at least one other member
-      if (activeTab === 'private' && data.members.length === 0) {
-        toast({
-          title: 'Error',
-          description: 'Please add at least one member to the private channel',
-          variant: 'destructive',
-        });
-        return;
-      }
+      // For private channels and DMs, filter out current user from members
+      const memberIds = data.members || [];
+      console.log('\nMember Processing:');
+      console.log('Initial Members:', memberIds);
+      // Only filter out current user for DMs
+      const filteredMemberIds = activeTab === 'dm' 
+        ? memberIds.filter(id => id !== user?.id)
+        : memberIds;
+      console.log('After Filtering Current User:', filteredMemberIds);
 
       const requestBody = {
-        name: data.name,
-        description: data.description || "",
-        type: activeTab.toUpperCase(),
-        ownerId: user?.id,
-        ...(activeTab === 'private' && {
-          memberIds: [user?.id, ...data.members]
-        }),
-        ...(activeTab === 'dm' && {
-          memberIds: data.members.filter(id => id !== user?.id)
-        })
+        name: activeTab !== 'dm' ? data.name : undefined,
+        description: activeTab !== 'dm' ? (data.description || "") : undefined,
+        type: activeTab === 'public' ? ChannelType.PUBLIC 
+           : activeTab === 'private' ? ChannelType.PRIVATE 
+           : ChannelType.DM,
+        memberIds: filteredMemberIds,
+        ownerId: user?.id
       };
 
-      console.log('Creating channel with:', requestBody);
+      console.log('\n=== REQUEST DETAILS ===');
+      console.log('URL:', `${process.env.NEXT_PUBLIC_API_URL}/channels`);
+      console.log('Final Request Body:', JSON.stringify(requestBody, null, 2));
+
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
         method: 'POST',
         headers: {
@@ -138,7 +184,8 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
       }
 
       const channel = await response.json();
-      console.log('Channel created:', channel);
+      console.log('=== CHANNEL CREATED ===');
+      console.log('Channel:', channel);
 
       // First close the dialog and reset form
       onOpenChange(false);
@@ -146,6 +193,7 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
       
       // Then emit socket event for real-time updates
       if (socket && isConnected) {
+        console.log('Emitting channel:created event');
         socket.emit('channel:created', { channel });
       }
       
