@@ -5,7 +5,7 @@ import { useSocket } from '@/providers/socket-provider';
 import { Message } from '@/types/message';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@clerk/nextjs';
-import { CheckIcon, CheckCheckIcon, Send } from 'lucide-react';
+import { CheckIcon, CheckCheckIcon, Send, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useChannelContext } from '@/contexts/channel-context';
@@ -209,9 +209,6 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
               <span className="text-sm font-medium text-gray-600">
                 {message.sender?.name || 'Unknown User'}
               </span>
-              <span className="text-xs text-gray-500">
-                {new Date(message.createdAt).toLocaleTimeString()}
-              </span>
             </div>
             <div 
               className={`max-w-[80%] rounded-lg p-3 ${
@@ -223,15 +220,19 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
               <p className="whitespace-pre-wrap break-words">{message.content}</p>
             </div>
             {message.userId === userId && (
-              <div className="flex justify-end mt-1">
+              <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+                <span>{new Date(message.createdAt).toLocaleTimeString()}</span>
                 {messageStatuses.find(status => status.id === message.id)?.status === 'sending' && (
-                  <span className="text-xs text-gray-500">Sending...</span>
+                  <span className="flex items-center gap-1">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Sending
+                  </span>
                 )}
                 {messageStatuses.find(status => status.id === message.id)?.status === 'sent' && (
-                  <CheckIcon className="w-4 h-4 text-gray-400" />
+                  <CheckIcon className="h-3 w-3" />
                 )}
                 {messageStatuses.find(status => status.id === message.id)?.status === 'delivered' && (
-                  <CheckCheckIcon className="w-4 h-4 text-gray-400" />
+                  <CheckCheckIcon className="h-3 w-3" />
                 )}
               </div>
             )}
