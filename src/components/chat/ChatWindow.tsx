@@ -5,13 +5,13 @@ import { useSocket } from '@/providers/socket-provider';
 import { Message } from '@/types/message';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@clerk/nextjs';
-import type { UserResource } from '@clerk/types';
 import { CheckIcon, CheckCheckIcon, Send, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useChannelContext } from '@/contexts/channel-context';
 import { cn } from '@/lib/utils';
 import { useUser } from '@clerk/nextjs';
+import { useMessageHistory } from '@/hooks/use-message-history';
 
 interface ChatWindowProps {
   channelId: string;
@@ -29,10 +29,22 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
   const { userId } = useAuth();
   const { user } = useUser();
   const { channels } = useChannelContext();
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [newMessage, setNewMessage] = useState('');
   const [isJoined, setIsJoined] = useState(false);
   const [messageStatuses, setMessageStatuses] = useState<MessageStatus[]>([]);
+  const [localMessages, setLocalMessages] = useState<Message[]>(initialMessages);
+  
+  // Use the message history hook
+  const {
+    messages: historyMessages,
+    isLoading,
+    error,
+    nextCursor,
+    fetchMessages
+  } = useMessageHistory();
+
+  // Combine history messages with local messages
+  const messages = [...historyMessages, ...localMessages];
 
   // Get channel name
   const channel = channels.find(c => c.id === channelId);
@@ -59,9 +71,9 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
       console.log('[Socket] Received new message:', message);
       
       if (message.channelId === channelId) {
-        setMessages(prev => {
+        setLocalMessages((prev: Message[]) => {
           // Check if we have a temporary version of this message
-          const tempMessage = prev.find(m => 
+          const tempMessage = prev.find((m: Message) => 
             m.content === message.content && 
             m.userId === message.userId &&
             m.id.startsWith('temp-')
@@ -69,11 +81,11 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
           
           if (tempMessage) {
             // Replace temporary message with the saved one
-            return prev.map(m => m.id === tempMessage.id ? message : m);
+            return prev.map((m: Message) => m.id === tempMessage.id ? message : m);
           }
           
           // Check if message already exists
-          const messageExists = prev.some(m => m.id === message.id);
+          const messageExists = prev.some((m: Message) => m.id === message.id);
           if (messageExists) return prev;
           
           return [...prev, message];
@@ -104,7 +116,7 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
       console.log('[Socket] Message saved:', { tempId, message });
       
       if (message.channelId === channelId) {
-        setMessages(prev => 
+        setLocalMessages(prev => 
           prev.map(m => m.id === tempId ? message : m)
         );
         setMessageStatuses(prev => 
@@ -128,7 +140,7 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
       });
 
       // Remove the temporary message
-      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setLocalMessages(prev => prev.filter(m => m.id !== tempId));
       setMessageStatuses(prev => prev.filter(status => status.id !== tempId));
     };
 
@@ -141,7 +153,7 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
       socket.off('message:saved', handleMessageSaved);
       socket.off('message:error', handleMessageError);
     };
-  }, [socket, channelId, toast]);
+  }, [socket, channelId, toast, messages]);
 
   const handleJoinChannel = async () => {
     if (!socket) return;
@@ -166,7 +178,7 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
     try {
       await socket.leaveChannel(channelId);
       setIsJoined(false);
-      setMessages([]);
+      setLocalMessages([]);
       setMessageStatuses([]);
     } catch (error) {
       console.error('Failed to leave channel:', error);
@@ -197,7 +209,7 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
       };
       
       // Add temporary message to UI
-      setMessages(prev => [...prev, tempMessage]);
+      setLocalMessages(prev => [...prev, tempMessage]);
       setMessageStatuses(prev => [...prev, { id: tempMessage.id, status: 'sending' }]);
 
       // Send message through socket
@@ -213,6 +225,23 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
         variant: 'destructive'
       });
       setNewMessage(content); // Restore the message content
+    }
+  };
+
+  // Fetch initial messages on mount and channel change
+  useEffect(() => {
+    if (channelId) {
+      fetchMessages(channelId);
+      // Clear local messages when channel changes
+      setLocalMessages([]);
+      setMessageStatuses([]);
+    }
+  }, [channelId, fetchMessages]);
+
+  // Add load more function
+  const handleLoadMore = () => {
+    if (nextCursor && !isLoading) {
+      fetchMessages(channelId, nextCursor);
     }
   };
 
@@ -234,6 +263,22 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
 
       {/* Messages */}
       <div className="flex-1 p-4 overflow-y-auto bg-gray-50 space-y-4">
+        {error && (
+          <div className="text-center text-red-500 py-2">
+            {error}
+          </div>
+        )}
+        
+        {nextCursor && (
+          <button
+            onClick={handleLoadMore}
+            disabled={isLoading}
+            className="w-full text-center text-sm text-gray-500 hover:text-gray-700 py-2"
+          >
+            {isLoading ? 'Loading...' : 'Load more messages'}
+          </button>
+        )}
+
         {messages.map((message) => (
           <div
             key={message.id}
