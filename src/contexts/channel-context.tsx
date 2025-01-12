@@ -37,7 +37,7 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
       const token = await getToken();
       if (!token) throw new Error('No auth token available');
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

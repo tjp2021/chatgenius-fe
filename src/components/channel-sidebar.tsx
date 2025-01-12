@@ -71,6 +71,13 @@ export function ChannelSidebar() {
     .filter(channel => channel.type === ChannelType.DM)
     .map(transformToChannelWithDetails);
 
+  const handleSetChannelToLeave = (channelId: string) => {
+    const channel = channels.find(c => c.id === channelId);
+    if (channel) {
+      setChannelToLeave(channel);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-emerald-900">
       {/* Header */}
@@ -129,8 +136,8 @@ export function ChannelSidebar() {
               onlineUsers={{}}
               selectedChannel={null}
               onChannelSelect={() => {}}
-              onJoinChannel={() => {}}
-              onLeaveChannel={() => {}}
+              onJoinChannel={(channelId) => {}}
+              onLeaveChannel={handleSetChannelToLeave}
             />
             
             <ChannelSection
@@ -143,8 +150,8 @@ export function ChannelSidebar() {
               onlineUsers={{}}
               selectedChannel={null}
               onChannelSelect={() => {}}
-              onJoinChannel={() => {}}
-              onLeaveChannel={() => {}}
+              onJoinChannel={(channelId) => {}}
+              onLeaveChannel={handleSetChannelToLeave}
             />
             
             <ChannelSection
@@ -157,11 +164,24 @@ export function ChannelSidebar() {
               onlineUsers={{}}
               selectedChannel={null}
               onChannelSelect={() => {}}
-              onJoinChannel={() => {}}
-              onLeaveChannel={() => {}}
+              onJoinChannel={(channelId) => {}}
+              onLeaveChannel={handleSetChannelToLeave}
             />
           </>
         )}
+      </div>
+
+      {/* Browse Channels Button at bottom */}
+      <div className="p-2 border-t border-emerald-800">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full text-emerald-100 hover:bg-emerald-800/50"
+          onClick={() => setIsBrowseOpen(true)}
+        >
+          <Users className="h-4 w-4 mr-2" />
+          Browse Channels
+        </Button>
       </div>
 
       {/* Modals */}

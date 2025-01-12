@@ -34,7 +34,7 @@ export function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsModalProp
         throw new Error('No authentication token available');
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels?include=members.user`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels?include=members.user`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
