@@ -50,16 +50,47 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
   useEffect(() => {
     if (!socket) return;
 
-    const handleNewMessage = (message: Message) => {
+    const handleMessage = (message: Message, eventType: 'new' | 'received') => {
+      console.log('[ChatWindow] Received message event:', { eventType, message });
+      
       if (message.channelId === channelId) {
-        setMessages(prev => [...prev, message]);
+        if (eventType === 'new') {
+          setMessages(prev => {
+            // Check if this is a confirmation of a temp message
+            const tempMessageIndex = prev.findIndex(m => 
+              m.id.startsWith('temp-') && 
+              m.content === message.content && 
+              m.userId === message.userId
+            );
+            
+            if (tempMessageIndex !== -1) {
+              // Replace temp message with confirmed message
+              const newMessages = [...prev];
+              newMessages[tempMessageIndex] = message;
+              return newMessages;
+            }
+            
+            // Check if message already exists
+            const messageExists = prev.some(m => m.id === message.id);
+            return messageExists ? prev : [...prev, message];
+          });
+        } else if (eventType === 'received') {
+          setMessageStatuses(prev => 
+            prev.map(status => {
+              if (status.id === message.id) {
+                return { ...status, status: 'delivered' };
+              }
+              return status;
+            })
+          );
+        }
       }
     };
 
-    socket.onNewMessage(handleNewMessage);
+    socket.onNewMessage(handleMessage);
 
     return () => {
-      socket.offNewMessage(handleNewMessage);
+      socket.offNewMessage(handleMessage);
     };
   }, [socket, channelId]);
 
@@ -100,10 +131,37 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
     setNewMessage(''); // Clear input immediately
     
     try {
-      const tempId = Date.now().toString();
-      const response = await socket.sendMessage<Message>(channelId, content, tempId);
+      // Add message to state immediately with a temporary ID
+      const tempMessage: Message = {
+        id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        content,
+        channelId,
+        userId: userId || '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isRead: false,
+        isDelivered: false,
+        sender: { 
+          id: userId || 'temp-user',
+          name: 'You'
+        }
+      };
+      
+      setMessages(prev => [...prev, tempMessage]);
+      setMessageStatuses(prev => [...prev, { id: tempMessage.id, status: 'sending' }]);
+
+      const response = await socket.sendMessage<Message>(channelId, content, tempMessage.id);
+      
       if (response.success && response.data) {
-        setMessageStatuses(prev => [...prev, { id: tempId, status: 'sent' }]);
+        // Replace temp message with confirmed message
+        setMessages(prev => prev.map(msg => 
+          msg.id === tempMessage.id ? response.data! : msg
+        ));
+        setMessageStatuses(prev => prev.map(status => 
+          status.id === tempMessage.id 
+            ? { id: response.data!.id, status: 'sent' }
+            : status
+        ));
       } else {
         toast({
           title: 'Warning',
@@ -118,6 +176,9 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
         variant: 'destructive'
       });
       setNewMessage(content); // Restore the message if sending failed
+      // Remove the temporary message
+      setMessages(prev => prev.filter(msg => !msg.id.startsWith('temp-')));
+      setMessageStatuses(prev => prev.filter(status => !status.id.startsWith('temp-')));
     }
   };
 

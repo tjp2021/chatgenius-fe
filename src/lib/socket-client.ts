@@ -76,6 +76,7 @@ export class ChatSocketClient {
   private pendingMessages = new Map<string, PendingMessage>();
   private isReconnecting = false;
   private connectionState: 'connected' | 'disconnected' | 'connecting' = 'disconnected';
+  private processedMessageIds = new Set<string>();
 
   constructor(private config: SocketConfig) {
     this.initializeSocket();
@@ -328,19 +329,27 @@ export class ChatSocketClient {
   }
 
   // Typed event handlers
-  onNewMessage<T>(callback: (message: T) => void): void {
+  onNewMessage<T>(callback: (message: T, eventType: 'new' | 'received') => void): void {
     console.log('[Socket] Setting up message handlers');
-    this.socket.on(SOCKET_EVENTS.MESSAGE.NEW, (message) => {
-      console.log('[Socket] Received message:new event:', message);
-      callback(message);
+    
+    this.socket.on(SOCKET_EVENTS.MESSAGE.NEW, (message: any) => {
+      console.log('[Socket] Processing message:new event:', { messageId: message.id, processed: this.processedMessageIds.has(message.id) });
+      if (!this.processedMessageIds.has(message.id)) {
+        this.processedMessageIds.add(message.id);
+        console.log('[Socket] Calling callback for new message:', message.id);
+        callback(message, 'new');
+      } else {
+        console.log('[Socket] Skipping duplicate message:', message.id);
+      }
     });
-    this.socket.on(SOCKET_EVENTS.MESSAGE.RECEIVED, (message) => {
+    
+    this.socket.on(SOCKET_EVENTS.MESSAGE.RECEIVED, (message: any) => {
       console.log('[Socket] Received message:received event:', message);
-      callback(message);
+      callback(message, 'received');
     });
   }
 
-  offNewMessage<T>(callback: (message: T) => void): void {
+  offNewMessage<T>(callback: (message: T, eventType: 'new' | 'received') => void): void {
     console.log('[Socket] Cleaning up message handlers');
     this.socket.off(SOCKET_EVENTS.MESSAGE.NEW, callback);
     this.socket.off(SOCKET_EVENTS.MESSAGE.RECEIVED, callback);
