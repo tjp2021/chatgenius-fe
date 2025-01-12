@@ -23,7 +23,7 @@ export default function ChannelsPage() {
           lastName: user?.lastName
         });
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/sync`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/sync`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,

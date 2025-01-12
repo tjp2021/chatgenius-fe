@@ -146,7 +146,7 @@ export const ChannelSection: React.FC<ChannelSectionProps> = ({
                   )}
                 </div>
                 <span className="truncate flex-1">
-                  {isDM ? (otherUser?.name || 'Unknown User') : channel.name}
+                  {isDM ? channel.name.split(" ., ")[1] || channel.name : channel.name}
                 </span>
                 {channel._count?.messages > 0 && (
                   <span className="text-xs text-gray-400 mr-2">

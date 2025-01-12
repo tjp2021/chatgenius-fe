@@ -57,7 +57,7 @@ export function ChannelSidebar() {
       messages: channel._count?.messages || 0
     },
     members: channel.members || [],
-    isMember: channel.members?.some(member => member.userId === userId) || false
+    isMember: channel.type === ChannelType.DM || channel.members?.some(member => member.userId === userId) || false
   });
 
   // Filter and transform channels by type

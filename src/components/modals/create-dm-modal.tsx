@@ -8,11 +8,15 @@ import { Search, UserPlus } from 'lucide-react';
 import { useAuth } from '@clerk/nextjs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
+import { toast } from '@/components/ui/use-toast';
 
 interface User {
   id: string;
   name: string;
   imageUrl?: string;
+  isOnline?: boolean;
+  email?: string;
 }
 
 interface CreateDMModalProps {
@@ -34,23 +38,35 @@ export function CreateDMModal({ isOpen, onClose }: CreateDMModalProps) {
       return;
     }
 
+    setIsLoading(true);
     try {
-      setIsLoading(true);
       const token = await getToken();
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/search?q=${encodeURIComponent(query)}`, {
+      const searchUrl = `${process.env.NEXT_PUBLIC_API_URL}/users/search?q=${encodeURIComponent(query)}`;
+      console.log('Search URL:', searchUrl);
+      
+      const response = await fetch(searchUrl, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
       });
 
       if (!response.ok) {
-        throw new Error('Failed to search users');
+        const errorData = await response.json().catch(() => null);
+        console.error('Search error:', errorData);
+        throw new Error(errorData?.message || 'Failed to search users');
       }
 
       const data = await response.json();
-      setUsers(data.users);
+      console.log('Search response:', data);
+      const userList = Array.isArray(data) ? data : data?.users || [];
+      setUsers(userList.filter((user: { id?: string; name?: string }) => user.id && user.name));
     } catch (error) {
       console.error('Error searching users:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to search users. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -59,40 +75,59 @@ export function CreateDMModal({ isOpen, onClose }: CreateDMModalProps) {
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearch(value);
-    searchUsers(value);
+    
+    if (!value.trim()) {
+      setUsers([]);
+      return;
+    }
+    
+    const timeoutId = setTimeout(() => {
+      searchUsers(value);
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
   };
 
   const handleCreateDM = async () => {
     if (!selectedUser) return;
 
     try {
-      setIsLoading(true);
       const token = await getToken();
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/channels`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           type: 'DM',
-          userId: selectedUser.id,
+          targetUserId: selectedUser.id,
+          name: `DM-${selectedUser.name}`.slice(0, 50)
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create DM');
+        const errorData = await response.json().catch(() => null);
+        console.error('DM creation error:', errorData);
+        throw new Error(errorData?.message || 'Failed to create DM');
       }
+
+      const data = await response.json();
+      console.log('DM creation response:', data);
 
       await refreshChannels();
       onClose();
-      setSearch('');
-      setSelectedUser(null);
-      setUsers([]);
+      toast({
+        title: "Success",
+        description: `Started a conversation with ${selectedUser.name}`,
+      });
     } catch (error) {
       console.error('Error creating DM:', error);
-    } finally {
-      setIsLoading(false);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create DM. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -104,42 +139,61 @@ export function CreateDMModal({ isOpen, onClose }: CreateDMModalProps) {
         </DialogHeader>
         
         <div className="space-y-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <div className="space-y-2">
+            <Label>Search Users</Label>
             <Input
-              placeholder="Search users..."
+              placeholder="Type a name..."
               value={search}
               onChange={handleSearchChange}
-              className="pl-10"
             />
           </div>
 
-          {users.length > 0 && (
-            <ScrollArea className="h-[200px] rounded-md border p-2">
-              {users.map((user) => (
-                <button
-                  key={user.id}
-                  onClick={() => setSelectedUser(user)}
-                  className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-accent transition-colors"
-                >
-                  <Avatar>
-                    <AvatarImage src={user.imageUrl} />
-                    <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                  <span className="flex-1 text-left">{user.name}</span>
-                  {selectedUser?.id === user.id && (
-                    <UserPlus className="h-4 w-4 text-primary" />
-                  )}
-                </button>
-              ))}
-            </ScrollArea>
-          )}
-
-          {isLoading && (
-            <div className="flex justify-center">
-              <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
+          {isLoading ? (
+            <div className="flex justify-center p-4">
+              <div className="animate-spin h-6 w-6 border-4 border-emerald-500 border-t-transparent rounded-full" />
             </div>
-          )}
+          ) : users && users.length > 0 ? (
+            <ScrollArea className="h-[200px] rounded-md border">
+              <div className="p-2 space-y-2">
+                {users.map((user) => (
+                  <button
+                    key={user.id}
+                    onClick={() => setSelectedUser(user)}
+                    className={cn(
+                      "flex items-center gap-3 w-full p-3 rounded-lg transition-colors",
+                      selectedUser?.id === user.id 
+                        ? "bg-emerald-900/10 hover:bg-emerald-900/20" 
+                        : "hover:bg-accent/50"
+                    )}
+                  >
+                    <div className="relative">
+                      <Avatar>
+                        <AvatarImage src={user.imageUrl} alt={user.name} />
+                        <AvatarFallback>{user.name[0]?.toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      <div className={cn(
+                        "absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white",
+                        user.isOnline ? "bg-green-500" : "bg-gray-400"
+                      )} />
+                    </div>
+                    <div className="flex flex-col items-start">
+                      <span className="font-medium">{user.name}</span>
+                      {user.email && (
+                        <span className="text-sm text-muted-foreground">{user.email}</span>
+                      )}
+                    </div>
+                    {selectedUser?.id === user.id && (
+                      <div className="ml-auto">
+                        <UserPlus className="h-4 w-4 text-emerald-500" />
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </ScrollArea>
+          ) : search.trim() !== '' ? (
+            <p className="text-center text-muted-foreground py-8">No users found</p>
+          ) : null}
         </div>
 
         <DialogFooter>

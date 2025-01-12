@@ -44,7 +44,21 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
       });
       if (!response.ok) throw new Error('Failed to refresh channels');
       const data = await response.json();
-      setChannels(data);
+      console.log('Raw channel data from backend:', data);
+      
+      // Process channels to show correct names
+      const processedChannels = data.map((channel: Channel) => {
+        // For DMs, use the name directly as it contains the other user's name
+        if (channel.type === ChannelType.DM) {
+          return {
+            ...channel,
+            name: channel.name
+          };
+        }
+        return channel;
+      });
+
+      setChannels(processedChannels);
     } catch (error) {
       console.error('Error refreshing channels:', error);
       setError(error as Error);

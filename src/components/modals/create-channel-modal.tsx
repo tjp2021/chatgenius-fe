@@ -8,6 +8,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { useChannelContext } from '@/contexts/channel-context';
 import { ChannelType } from '@/types/channel';
 import { useAuth } from '@clerk/nextjs';
+import { UserSearch } from '@/components/user-search';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface CreateChannelModalProps {
   isOpen: boolean;
@@ -18,6 +20,7 @@ export function CreateChannelModal({ isOpen, onClose }: CreateChannelModalProps)
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<'PUBLIC' | 'PRIVATE'>('PUBLIC');
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { refreshChannels } = useChannelContext();
   const { getToken } = useAuth();
@@ -38,6 +41,7 @@ export function CreateChannelModal({ isOpen, onClose }: CreateChannelModalProps)
           name,
           description,
           type,
+          userIds: type === 'PRIVATE' ? selectedUsers : undefined
         }),
       });
 
@@ -51,11 +55,21 @@ export function CreateChannelModal({ isOpen, onClose }: CreateChannelModalProps)
       setName('');
       setDescription('');
       setType('PUBLIC');
+      setSelectedUsers([]);
     } catch (error) {
       console.error('Error creating channel:', error);
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleUserSelect = (userId: string) => {
+    setSelectedUsers(prev => {
+      if (prev.includes(userId)) {
+        return prev.filter(id => id !== userId);
+      }
+      return [...prev, userId];
+    });
   };
 
   return (
@@ -100,6 +114,21 @@ export function CreateChannelModal({ isOpen, onClose }: CreateChannelModalProps)
               </div>
             </RadioGroup>
           </div>
+
+          {type === 'PRIVATE' && (
+            <div className="space-y-2">
+              <Label>Invite Users</Label>
+              <ScrollArea className="h-[200px] rounded-md border">
+                <div className="p-4">
+                  <UserSearch
+                    onSelect={handleUserSelect}
+                    selectedUsers={selectedUsers}
+                    placeholder="Search users to invite..."
+                  />
+                </div>
+              </ScrollArea>
+            </div>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
