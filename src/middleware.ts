@@ -5,7 +5,7 @@ export default authMiddleware({
   publicRoutes: ["/", "/sign-in", "/sign-up"],
   
   // If not signed in and trying to access protected route, redirect to sign-in
-  ignoredRoutes: ["/api/trpc"],
+  ignoredRoutes: ["/api/trpc"]
 });
 
 export const config = {

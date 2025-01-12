@@ -3,19 +3,40 @@
 import { useState } from 'react';
 import { useSocket } from '@/providers/socket-provider';
 import { useChannelContext } from '@/contexts/channel-context';
-import { Channel } from '@/types/channel';
-import { UserAvatar } from './user-avatar';
+import { Channel, ChannelType, ChannelWithDetails } from '@/types/channel';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
 import { BrowseChannelsModal } from './browse-channels-modal';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/dialog';
+import { ChannelSection } from './chat/channel-section';
+import { Plus, Users } from 'lucide-react';
+import { useAuth } from '@clerk/nextjs';
+import { CreateChannelModal } from './modals/create-channel-modal';
+import { CreateDMModal } from './modals/create-dm-modal';
 
 export function ChannelSidebar() {
   const [channelToLeave, setChannelToLeave] = useState<Channel | null>(null);
   const { channels, isLoading: isLoadingChannels, leaveChannel } = useChannelContext();
   const { isConnected } = useSocket();
+  const { userId } = useAuth();
 
-  const [isOpen, setIsOpen] = useState(false);
+  const [isBrowseOpen, setIsBrowseOpen] = useState(false);
+  const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false);
+  const [isCreateDMOpen, setIsCreateDMOpen] = useState(false);
+
+  // Section expansion states
+  const [expandedSections, setExpandedSections] = useState({
+    public: true,
+    private: true,
+    dm: true
+  });
+
+  const toggleSection = (section: 'public' | 'private' | 'dm') => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
 
   const handleLeaveChannel = async () => {
     if (!channelToLeave) return;
@@ -28,77 +49,135 @@ export function ChannelSidebar() {
     }
   };
 
+  // Transform Channel to ChannelWithDetails
+  const transformToChannelWithDetails = (channel: Channel): ChannelWithDetails => ({
+    ...channel,
+    _count: {
+      members: channel._count?.members || 0,
+      messages: channel._count?.messages || 0
+    },
+    members: channel.members || [],
+    isMember: channel.members?.some(member => member.userId === userId) || false
+  });
+
+  // Filter and transform channels by type
+  const publicChannels = channels
+    .filter(channel => channel.type === ChannelType.PUBLIC)
+    .map(transformToChannelWithDetails);
+  const privateChannels = channels
+    .filter(channel => channel.type === ChannelType.PRIVATE)
+    .map(transformToChannelWithDetails);
+  const directMessages = channels
+    .filter(channel => channel.type === ChannelType.DM)
+    .map(transformToChannelWithDetails);
+
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-4 border-b">
+    <div className="flex flex-col h-full bg-emerald-900">
+      {/* Header */}
+      <div className="p-4 border-b border-emerald-800">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold">Channels</h2>
+          <h2 className="text-xl font-bold text-white">Channels</h2>
+          <div className="flex items-center gap-2">
+            <div className={cn(
+              "w-2 h-2 rounded-full",
+              isConnected ? "bg-green-500" : "bg-red-500"
+            )} />
+            <span className="text-sm text-emerald-100">
+              {isConnected ? "Connected" : "Disconnected"}
+            </span>
+          </div>
+        </div>
+        
+        {/* Create buttons */}
+        <div className="flex gap-2">
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setIsOpen(true)}
-            disabled={!isConnected}
+            className="flex-1 bg-emerald-800 text-emerald-100 border-emerald-700 hover:bg-emerald-700"
+            onClick={() => setIsCreateChannelOpen(true)}
           >
-            Browse
+            <Plus className="h-4 w-4 mr-1" />
+            Channel
           </Button>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className={cn(
-            "w-2 h-2 rounded-full",
-            isConnected ? "bg-green-500" : "bg-red-500"
-          )} />
-          <span className="text-sm text-muted-foreground">
-            {isConnected ? "Connected" : "Disconnected"}
-          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 bg-emerald-800 text-emerald-100 border-emerald-700 hover:bg-emerald-700"
+            onClick={() => setIsCreateDMOpen(true)}
+          >
+            <Users className="h-4 w-4 mr-1" />
+            DM
+          </Button>
         </div>
       </div>
 
-      {isLoadingChannels ? (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-        </div>
-      ) : (
-        <div className="flex-1 overflow-y-auto p-4">
-          {channels.map((channel) => (
-            <div
-              key={channel.id}
-              className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 group"
-            >
-              <div className="flex items-center gap-2">
-                {channel.members?.[0]?.user && (
-                  <UserAvatar userId={channel.members[0].user.id} />
-                )}
-                <div>
-                  <p className="font-medium">{channel.name}</p>
-                  {channel.description && (
-                    <p className="text-sm text-muted-foreground truncate">
-                      {channel.description}
-                    </p>
-                  )}
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{channel._count?.members || 0} members</span>
-                    <span>•</span>
-                    <span>{channel._count?.messages || 0} messages</span>
-                  </div>
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setChannelToLeave(channel)}
-                className="opacity-0 group-hover:opacity-100"
-                disabled={!isConnected}
-              >
-                Leave
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Channel sections */}
+      <div className="flex-1 overflow-y-auto p-2 space-y-4">
+        {isLoadingChannels ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="animate-spin h-8 w-8 border-4 border-emerald-500 border-t-transparent rounded-full" />
+          </div>
+        ) : (
+          <>
+            <ChannelSection
+              title="Public Channels"
+              channels={publicChannels}
+              type={ChannelType.PUBLIC}
+              isExpanded={expandedSections.public}
+              onToggle={() => toggleSection('public')}
+              userId={userId}
+              onlineUsers={{}}
+              selectedChannel={null}
+              onChannelSelect={() => {}}
+              onJoinChannel={() => {}}
+              onLeaveChannel={() => {}}
+            />
+            
+            <ChannelSection
+              title="Private Channels"
+              channels={privateChannels}
+              type={ChannelType.PRIVATE}
+              isExpanded={expandedSections.private}
+              onToggle={() => toggleSection('private')}
+              userId={userId}
+              onlineUsers={{}}
+              selectedChannel={null}
+              onChannelSelect={() => {}}
+              onJoinChannel={() => {}}
+              onLeaveChannel={() => {}}
+            />
+            
+            <ChannelSection
+              title="Direct Messages"
+              channels={directMessages}
+              type={ChannelType.DM}
+              isExpanded={expandedSections.dm}
+              onToggle={() => toggleSection('dm')}
+              userId={userId}
+              onlineUsers={{}}
+              selectedChannel={null}
+              onChannelSelect={() => {}}
+              onJoinChannel={() => {}}
+              onLeaveChannel={() => {}}
+            />
+          </>
+        )}
+      </div>
 
+      {/* Modals */}
       <BrowseChannelsModal
-        isOpen={isOpen}
-        onClose={() => setIsOpen(false)}
+        isOpen={isBrowseOpen}
+        onClose={() => setIsBrowseOpen(false)}
+      />
+
+      <CreateChannelModal
+        isOpen={isCreateChannelOpen}
+        onClose={() => setIsCreateChannelOpen(false)}
+      />
+
+      <CreateDMModal
+        isOpen={isCreateDMOpen}
+        onClose={() => setIsCreateDMOpen(false)}
       />
 
       <Dialog open={!!channelToLeave} onOpenChange={() => setChannelToLeave(null)}>

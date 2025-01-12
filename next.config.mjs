@@ -2,7 +2,12 @@ import { fileURLToPath } from 'url';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // ... your other config
+  typescript: {
+    ignoreBuildErrors: false,
+  },
+  eslint: {
+    ignoreDuringBuilds: false,
+  },
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,

@@ -2,7 +2,6 @@ import { WebhookEvent } from '@clerk/nextjs/server';
 import { NextApiRequest, NextApiResponse } from 'next';
 import { Webhook } from 'svix';
 import { buffer } from 'micro';
-import prisma from '@/lib/prisma';
 
 export const config = {
   api: {
@@ -18,9 +17,9 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
+  const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
   if (!WEBHOOK_SECRET) {
-    throw new Error('Please add WEBHOOK_SECRET from Clerk Dashboard to .env');
+    throw new Error('Please add CLERK_WEBHOOK_SECRET from Clerk Dashboard to .env');
   }
 
   // Get the headers
@@ -55,12 +54,10 @@ export default async function handler(
   try {
     if (eventType.startsWith('user.')) {
       const isUserEvent = 'email_addresses' in eventData;
-      await prisma.userEvent.create({
-        data: {
-          type: eventType,
-          userId: id,
-          email: isUserEvent ? eventData.email_addresses?.[0]?.email_address : null
-        }
+      console.log('User event received:', {
+        type: eventType,
+        userId: id,
+        email: isUserEvent ? eventData.email_addresses?.[0]?.email_address : null
       });
     }
 

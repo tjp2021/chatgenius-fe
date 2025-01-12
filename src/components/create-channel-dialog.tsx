@@ -57,7 +57,7 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
   const { getToken } = useAuth();
   const { user } = useUser();
   const { refreshChannels } = useChannelContext();
-  const { socket } = useSocket();
+  const { socket, isConnected } = useSocket();
 
   const form = useForm<z.infer<typeof channelSchema>>({
     resolver: zodResolver(channelSchema),
@@ -141,7 +141,7 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
       form.reset();
       
       // Then emit socket event for real-time updates
-      if (socket?.isConnected) {
+      if (socket && isConnected) {
         socket.emit('channel:created', { channel });
       }
       

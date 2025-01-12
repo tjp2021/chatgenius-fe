@@ -25,7 +25,7 @@ const ioHandler = (req: NextApiRequest, res: SocketWithIO) => {
   if (!res.socket.server.io) {
     console.log('Initializing socket server');
     const io = new ServerIO(res.socket.server, {
-      path: '/api/socket/io',
+      path: '/api/socket.io',
       addTrailingSlash: false,
     });
     

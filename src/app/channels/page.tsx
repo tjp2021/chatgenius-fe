@@ -23,7 +23,7 @@ export default function ChannelsPage() {
           lastName: user?.lastName
         });
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/me`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/sync`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -32,16 +32,10 @@ export default function ChannelsPage() {
           body: JSON.stringify({
             id: userId,
             email: user?.primaryEmailAddress?.emailAddress,
-            username: user?.username,
-            first_name: user?.firstName,
-            last_name: user?.lastName,
-            full_name: `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
-            image_url: user?.imageUrl,
-            created_at: user?.createdAt,
-            updated_at: user?.updatedAt,
-            email_verified: user?.primaryEmailAddress?.verification?.status === 'verified',
-            last_seen: new Date().toISOString(),
-            is_online: true
+            username: user?.username || user?.firstName?.toLowerCase() || userId,
+            firstName: user?.firstName,
+            lastName: user?.lastName,
+            imageUrl: user?.imageUrl
           })
         });
 

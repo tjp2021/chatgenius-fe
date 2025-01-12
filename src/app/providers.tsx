@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import { ClerkProvider } from '@clerk/nextjs';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
@@ -8,7 +9,6 @@ import { Toaster } from '@/components/ui/toaster';
 import { SocketProvider } from '@/providers/socket-provider';
 import { ChannelProvider } from '@/contexts/channel-context';
 import { AuthProvider } from '@/providers/auth-provider';
-import { env } from '@/env.mjs';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,7 +22,7 @@ const queryClient = new QueryClient({
 
 export function ClientProviders({ children }: { children: React.ReactNode }) {
   return (
-    <ClerkProvider publishableKey={env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}>
+    <ClerkProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <ThemeProvider

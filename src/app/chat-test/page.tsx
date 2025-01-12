@@ -1,24 +1,32 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSocket } from '@/hooks/useSocket';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
-import { Message, MessageDeliveryStatus } from '@/types/message';
+import { Message } from '@/types/message';
+import { Send } from 'lucide-react';
+import { useSocket } from '@/providers/socket-provider';
+import { useAuth } from '@clerk/nextjs';
 
 export default function ChatTestPage() {
-  const { socket, isConnected } = useSocket();
-  const { toast } = useToast();
+  const { socket, isConnected: socketConnected } = useSocket();
+  const { userId } = useAuth();
+  const [isConnected, setIsConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState('Disconnected');
+  const [channelId, setChannelId] = useState('f47ac10b-58cc-4372-a567-0e02b2c3d479');
+  const [hasJoined, setHasJoined] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageInput, setMessageInput] = useState('');
-  const [channelId, setChannelId] = useState('20d6a357-91e3-4ffe-afdd-5b4c688a775f');
-  const [hasJoined, setHasJoined] = useState(false);
+  const { toast } = useToast();
 
-  // Connection Status
-  const connectionStatus = isConnected ? 'Connected' : 'Disconnected';
-  
+  // Track socket connection
+  useEffect(() => {
+    setIsConnected(socketConnected);
+    setConnectionStatus(socketConnected ? 'Connected' : 'Disconnected');
+  }, [socketConnected]);
+
   // Join Channel
   const handleJoinChannel = async () => {
     if (!socket || !isConnected) {
@@ -102,14 +110,22 @@ export default function ChatTestPage() {
   const handleSendMessage = async () => {
     if (!socket || !messageInput.trim()) return;
     
+    const content = messageInput.trim();
+    setMessageInput(''); // Clear input immediately
+    
     try {
       const tempId = Date.now().toString();
-      const response = await socket.sendMessage<Message>(channelId, messageInput, tempId);
+      const response = await socket.sendMessage<Message>(channelId, content, tempId);
       if (response.success && response.data) {
-        setMessageInput('');
         toast({
           title: 'Message Sent',
           description: 'Message sent successfully'
+        });
+      } else {
+        toast({
+          title: 'Warning',
+          description: 'Message sent but no confirmation received',
+          variant: 'default'
         });
       }
     } catch (error) {
@@ -118,6 +134,7 @@ export default function ChatTestPage() {
         description: 'Failed to send message',
         variant: 'destructive'
       });
+      setMessageInput(content); // Restore the message if sending failed
     }
   };
 
@@ -126,10 +143,29 @@ export default function ChatTestPage() {
     if (!socket) return;
 
     // Message handler
-    const handleNewMessage = (message: Message) => {
-      console.log('New message received:', message);
+    const handleNewMessage = (rawMessage: any) => {
+      console.log('New message received:', JSON.stringify(rawMessage, null, 2));
+      
+      // Transform the raw message into our expected format
+      const message: Message = {
+        id: rawMessage.id || rawMessage.tempId || Date.now().toString(),
+        content: rawMessage.content,
+        channelId: rawMessage.channelId,
+        userId: rawMessage.senderId || rawMessage.userId,
+        createdAt: rawMessage.createdAt || rawMessage.timestamp || new Date().toISOString(),
+        updatedAt: rawMessage.updatedAt || rawMessage.timestamp || new Date().toISOString(),
+        isRead: false,
+        isDelivered: false,
+        sender: {
+          id: rawMessage.senderId || rawMessage.userId,
+          name: rawMessage.sender?.name || `User ${(rawMessage.senderId || rawMessage.userId || '').split('_')[1]?.slice(0, 8)}`,
+        }
+      };
+
       setMessages(prev => [...prev, message]);
-      socket.confirmDelivery(message.id);
+      if (message.id) {
+        socket.confirmDelivery(message.id);
+      }
     };
 
     // Channel event handlers
@@ -154,17 +190,17 @@ export default function ChatTestPage() {
     };
 
     // Set up event listeners
-    socket.onNewMessage<Message>(handleNewMessage);
-    socket.on('channel:joined', handleChannelJoined);
-    socket.on('channel:left', handleChannelLeft);
-    socket.on('channel:error', handleChannelError);
+    socket.onNewMessage(handleNewMessage);
+    socket.onChannelJoined(handleChannelJoined);
+    socket.onChannelLeft(handleChannelLeft);
+    socket.onChannelError(handleChannelError);
 
     // Cleanup
     return () => {
-      socket.off('message:new', handleNewMessage);
-      socket.off('channel:joined', handleChannelJoined);
-      socket.off('channel:left', handleChannelLeft);
-      socket.off('channel:error', handleChannelError);
+      socket.offNewMessage(handleNewMessage);
+      socket.offChannelJoined(handleChannelJoined);
+      socket.offChannelLeft(handleChannelLeft);
+      socket.offChannelError(handleChannelError);
     };
   }, [socket, toast]);
 
@@ -209,18 +245,41 @@ export default function ChatTestPage() {
       {/* Message List */}
       <Card className="p-4">
         <h2 className="font-semibold mb-2">Messages</h2>
-        <div className="h-[300px] overflow-y-auto border rounded p-2 mb-2">
-          {messages.map((msg) => (
-            <div key={msg.id} className="p-2 hover:bg-accent rounded">
-              <div className="font-medium">{msg.sender.name}</div>
-              <div>{msg.content}</div>
-              <div className="text-xs text-muted-foreground">
-                {msg.isDelivered ? 'Delivered' : 'Sent'}
+        <div className="h-[400px] overflow-y-auto border rounded p-4 mb-2 space-y-4 bg-muted/30">
+          {messages.map((msg) => {
+            const isCurrentUser = msg.sender?.id !== msg.userId;
+            return (
+              <div 
+                key={msg.id || Date.now()} 
+                className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'}`}
+              >
+                <div className={`flex items-center gap-2 mb-1 ${isCurrentUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                  <span className="text-sm font-medium text-muted-foreground">
+                    {msg.sender?.name || 'Unknown User'}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(msg.createdAt).toLocaleTimeString()}
+                  </span>
+                </div>
+                <div 
+                  className={`max-w-[80%] rounded-lg p-3 ${
+                    isCurrentUser
+                      ? 'bg-primary text-primary-foreground mr-0 ml-8' 
+                      : 'bg-accent text-accent-foreground ml-0 mr-8'
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                </div>
+                {isCurrentUser && (
+                  <span className="text-xs text-muted-foreground mt-1">
+                    {msg.isDelivered ? '✓✓ Delivered' : '✓ Sent'}
+                  </span>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
           {messages.length === 0 && (
-            <div className="text-center text-muted-foreground">
+            <div className="h-full flex items-center justify-center text-muted-foreground">
               No messages yet
             </div>
           )}
@@ -230,14 +289,17 @@ export default function ChatTestPage() {
             value={messageInput}
             onChange={(e) => setMessageInput(e.target.value)}
             placeholder="Type a message..."
-            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
             disabled={!isConnected || !hasJoined}
+            className="min-h-[44px]"
           />
           <Button 
             onClick={handleSendMessage}
             disabled={!isConnected || !hasJoined}
+            size="icon"
+            className="h-[44px] w-[44px]"
           >
-            Send
+            <Send className="h-5 w-5" />
           </Button>
         </div>
       </Card>
