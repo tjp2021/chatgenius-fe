@@ -19,7 +19,7 @@ interface BrowseChannelsModalProps {
 
 export function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsModalProps) {
   const { userId, getToken } = useAuth();
-  const { joinChannel, leaveChannel } = useChannelContext();
+  const { joinChannel, leaveChannel, channels: contextChannels } = useChannelContext();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isLeaving, setIsLeaving] = useState<string | null>(null);
@@ -34,36 +34,37 @@ export function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsModalProp
         throw new Error('No authentication token available');
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels?include=members.user`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
       if (!response.ok) throw new Error('Failed to fetch channels');
-      return response.json();
-    }
+      const data = await response.json();
+      console.log('All channels data:', data);
+      return data;
+    },
+    // Ensure query is refetched when modal is opened
+    enabled: isOpen
   });
 
   // Filter channels based on membership and type
   const publicChannels = allChannels.filter(channel => 
     channel.type === 'PUBLIC' && 
-    !channel.members?.some(member => member.userId === userId)
+    !contextChannels.some(c => c.id === channel.id)
   );
 
-  const joinedChannels = allChannels.filter(channel => 
-    channel.members?.some(member => member.userId === userId)
+  const joinedChannels = contextChannels.filter(channel => 
+    channel.type === 'PUBLIC' || channel.type === 'PRIVATE'
   );
 
   const handleJoinChannel = async (channelId: string) => {
     try {
       setIsJoining(channelId);
       await joinChannel(channelId);
-      // Invalidate both queries to refresh the lists
+      // Invalidate and refetch
       await queryClient.invalidateQueries({ queryKey: ['all-channels'] });
-      await queryClient.invalidateQueries({ queryKey: ['channels'] });
-      // Force an immediate refetch
-      await queryClient.refetchQueries({ queryKey: ['channels'] });
       toast({
         title: 'Success',
         description: 'You have joined the channel',
@@ -83,11 +84,8 @@ export function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsModalProp
     try {
       setIsLeaving(channelId);
       await leaveChannel(channelId);
-      
-      // Invalidate both queries to refresh the lists
+      // Invalidate and refetch
       await queryClient.invalidateQueries({ queryKey: ['all-channels'] });
-      await queryClient.invalidateQueries({ queryKey: ['channels'] });
-      
       toast({
         title: 'Success',
         description: 'You have left the channel',

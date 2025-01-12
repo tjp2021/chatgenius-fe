@@ -1,45 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { useAuth } from '@clerk/nextjs';
+import { useAuth, useUser } from '@clerk/nextjs';
 
 export function useApi() {
   const { getToken } = useAuth();
+  const { user } = useUser();
   const [isLoading, setIsLoading] = useState(false);
-
-  const joinChannel = async (channelId: string) => {
-    setIsLoading(true);
-    try {
-      const token = await getToken();
-      const response = await fetch(`/api/channels/${channelId}/join`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (!response.ok) throw new Error('Failed to join channel');
-      return await response.json();
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const leaveChannel = async (channelId: string) => {
-    setIsLoading(true);
-    try {
-      const token = await getToken();
-      const response = await fetch(`/api/channels/${channelId}/leave`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (!response.ok) throw new Error('Failed to leave channel');
-      return await response.json();
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const createChannel = async (data: {
     name: string;
@@ -49,7 +16,7 @@ export function useApi() {
     setIsLoading(true);
     try {
       const token = await getToken();
-      const response = await fetch('/api/channels', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -65,8 +32,6 @@ export function useApi() {
   };
 
   return {
-    joinChannel,
-    leaveChannel,
     createChannel,
     isLoading
   };

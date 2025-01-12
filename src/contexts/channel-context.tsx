@@ -2,9 +2,9 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
-import { useApi } from '@/hooks/useApi';
 import { Channel, ChannelType } from '@/types/channel';
 import { useSocket } from '@/hooks/useSocket';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface ChannelContextType {
   channels: Channel[];
@@ -25,7 +25,7 @@ const ChannelContext = createContext<ChannelContextType | undefined>(undefined);
 export function ChannelProvider({ children }: { children: React.ReactNode }) {
   const { userId, getToken } = useAuth();
   const { socket } = useSocket();
-  const { joinChannel, leaveChannel } = useApi();
+  const queryClient = useQueryClient();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -62,6 +62,66 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('Error refreshing channels:', error);
       setError(error as Error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const joinChannel = async (channelId: string) => {
+    try {
+      setIsLoading(true);
+      const token = await getToken();
+      if (!token) throw new Error('No auth token available');
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels/${channelId}/join`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!response.ok) throw new Error('Failed to join channel');
+      
+      // Force an immediate refresh of all channel lists
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['channels'] }),
+        queryClient.invalidateQueries({ queryKey: ['all-channels'] }),
+        refreshChannels()
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const leaveChannel = async (channelId: string) => {
+    try {
+      setIsLoading(true);
+      const token = await getToken();
+      if (!token) throw new Error('No auth token available');
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels/${channelId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      // If we get a 404, the channel is already gone, which is fine
+      if (!response.ok && response.status !== 404) {
+        throw new Error('Failed to leave channel');
+      }
+      
+      // Emit the event with proper payload
+      socket?.emit('channel:member_left', { channelId });
+      
+      // Force an immediate refresh of all channel lists
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['channels'] }),
+        queryClient.invalidateQueries({ queryKey: ['all-channels'] }),
+        refreshChannels()
+      ]);
+    } catch (error) {
+      console.error('Error leaving channel:', error);
+      throw error;
     } finally {
       setIsLoading(false);
     }
