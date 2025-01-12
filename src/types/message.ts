@@ -33,10 +33,11 @@ export interface Message {
   userId: string;
   createdAt: string;
   updatedAt: string;
-  user: User;
+  user: MessageUser;
   reactions: Reaction[];
-  isRead?: boolean;
-  isDelivered?: boolean;
+  isRead: boolean;
+  isDelivered: boolean;
+  replyToId: string | null;
 }
 
 export interface MessagePayload {

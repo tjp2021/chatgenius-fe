@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSocket } from '@/providers/socket-provider';
-import { Message } from '@/types/message';
+import { Message, MessageDeliveryStatus, MessageUser } from '@/types/message';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@clerk/nextjs';
 import { CheckIcon, CheckCheckIcon, Send, Loader2 } from 'lucide-react';
@@ -24,6 +24,39 @@ interface MessageStatus {
   status: 'sending' | 'sent' | 'delivered' | 'read';
 }
 
+interface SocketResponse<T = any> {
+  success: boolean;
+  error?: string;
+  data?: T;
+}
+
+interface MessageResponse extends SocketResponse {
+  data: {
+    message: Message;
+    tempId?: string;
+  };
+}
+
+interface MessageDeliveredPayload {
+  messageId: string;
+  tempId: string;
+  status: MessageDeliveryStatus.DELIVERED;
+  processed: true;
+}
+
+interface MessageCreatedPayload {
+  message: Message;
+  tempId: string;
+  processed: true;
+}
+
+interface MessageFailedPayload {
+  error: string;
+  tempId: string;
+  status: MessageDeliveryStatus.FAILED;
+  processed: true;
+}
+
 export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps) {
   console.log('ChatWindow mounting/updating', { channelId, initialMessages });
   
@@ -33,7 +66,6 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
   const { user } = useUser();
   const { channels } = useChannelContext();
   const [newMessage, setNewMessage] = useState('');
-  const [isJoined, setIsJoined] = useState(false);
   const [messageStatuses, setMessageStatuses] = useState<MessageStatus[]>([]);
   const [localMessages, setLocalMessages] = useState<Message[]>(initialMessages);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -80,46 +112,10 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
   const channel = channels.find(c => c.id === channelId);
   const channelName = channel?.name || channelId;
 
-  const handleJoinChannel = useCallback(async () => {
-    console.log('Attempting to join channel:', { 
-      channelId, 
-      socketExists: !!socket,
-      socketConnected: socket?.connected,
-      currentlyJoined: isJoined
-    });
-    
-    if (!socket) return;
-    
-    try {
-      console.log('CRITICAL: Emitting join_channel event', { 
-        channelId, 
-        socketId: socket.id,
-        socketConnected: socket.connected,
-        transport: socket.io.engine.transport.name
-      });
-      
-      // Force isJoined to true immediately
-      setIsJoined(true);
-      
-      // Emit join_channel event
-      socket.emit('join_channel', { channelId });
-      
-    } catch (error) {
-      console.error('Join channel error:', error);
-      setIsJoined(false);
-      toast({
-        title: 'Error',
-        description: 'Failed to join channel',
-        variant: 'destructive'
-      });
-    }
-  }, [socket, channelId, toast]);
-
   const handleLeaveChannel = useCallback(async () => {
     if (!socket) return;
     try {
-      socket.emit('leave_channel', { channelId });
-      setIsJoined(false);
+      socket.emit('channel:leave', { channelId });
       setLocalMessages([]);
       setMessageStatuses([]);
     } catch (error) {
@@ -127,200 +123,179 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
     }
   }, [socket, channelId]);
 
-  // Debug isJoined state
-  useEffect(() => {
-    console.log('isJoined state changed:', {
-      isJoined,
-      channelId,
-      hasSocket: !!socket,
-      isConnected
-    });
-  }, [isJoined, channelId, socket, isConnected]);
-
   // Combine all socket-related effects into one
   useEffect(() => {
     console.log('CRITICAL - Socket/Channel status:', {
       hasSocket: !!socket,
       isConnected,
-      isJoined,
       channelId,
-      socketId: socket?.getSocketId()
+      socketId: socket?.getSocketId?.(),
+      messageCount: messages.length,
+      currentMessageStatuses: messageStatuses
     });
     
     if (!socket || !isConnected) {
       console.log('CRITICAL - Socket not ready');
-      setIsJoined(false);
       return;
     }
 
-    // Join channel
-    console.log('CRITICAL - Joining channel', channelId);
-    socket.joinChannel(channelId).then(response => {
-      if (response.success) {
-        setIsJoined(true);
-      } else {
-        console.error('Failed to join channel:', response.error);
-        toast({
-          title: 'Error',
-          description: response.error || 'Failed to join channel',
-          variant: 'destructive'
-        });
-      }
-    });
-
-    // Listen for messages
-    const handleNewMessage = (message: Message) => {
-      console.log('[Socket] Received new message:', message);
+    // Register event handlers
+    console.log('CRITICAL - Registering socket event handlers');
+    
+    const handleMessageDelivered = (payload: MessageDeliveredPayload) => {
+      console.log('CRITICAL - message:delivered received:', {
+        payload,
+        currentStatuses: messageStatuses,
+        willUpdate: payload.tempId
+      });
       
-      if (message.channelId === channelId) {
-        setLocalMessages((prev: Message[]) => {
-          // Check if we have a temporary version of this message
-          const tempMessage = prev.find((m: Message) => 
-            m.content === message.content && 
-            m.userId === message.userId &&
-            m.id.startsWith('temp-')
+      if (payload.processed && payload.status === MessageDeliveryStatus.DELIVERED) {
+        setMessageStatuses(prev => {
+          console.log('CRITICAL - Updating message status:', {
+            prevStatuses: prev,
+            tempId: payload.tempId,
+            matchingStatus: prev.find(s => s.id === payload.tempId)
+          });
+          
+          const updated = prev.map(status =>
+            status.id === payload.tempId 
+              ? { ...status, status: 'delivered' as const } 
+              : status
           );
-          
-          if (tempMessage) {
-            // Replace temporary message with the saved one
-            return prev.map((m: Message) => m.id === tempMessage.id ? message : m);
-          }
-          
-          // Check if message already exists
-          const messageExists = prev.some((m: Message) => m.id === message.id);
-          if (messageExists) return prev;
-          
-          return [...prev, message];
+          console.log('CRITICAL - New message statuses:', updated);
+          return updated;
         });
       }
     };
 
-    // Handle message acknowledgment
-    const handleMessageAck = (response: SocketResponse) => {
-      console.log('[Socket] Message acknowledgment received:', response);
+    const handleMessageCreated = (payload: MessageCreatedPayload) => {
+      console.log('CRITICAL - message:created received:', {
+        payload,
+        currentStatuses: messageStatuses,
+        currentMessages: localMessages
+      });
       
-      if (response.success && response.message) {
-        console.log('[Socket] Message saved successfully, updating UI');
-        // Update local messages - replace temp message with saved one
-        setLocalMessages(prev => prev.map(msg => 
-          msg.id === response.message.tempId ? response.message : msg
-        ));
-        // Update message status
-        setMessageStatuses(prev => prev.map(status =>
-          status.id === response.message.tempId ? { ...status, status: 'sent' } : status
-        ));
-      } else {
-        console.error('[Socket] Message save failed:', response.error);
-        toast({
-          title: 'Error',
-          description: response.error || 'Failed to send message',
-          variant: 'destructive'
+      if (payload.processed && payload.message) {
+        setLocalMessages(prev => {
+          const filtered = prev.filter(msg => msg.id !== payload.tempId);
+          const updated = [...filtered, payload.message];
+          console.log('CRITICAL - Updated messages:', {
+            filtered,
+            updated,
+            tempId: payload.tempId
+          });
+          return updated;
         });
-        // Remove the temporary message on failure
-        if (response.message?.tempId) {
-          setLocalMessages(prev => prev.filter(msg => msg.id !== response.message.tempId));
-          setMessageStatuses(prev => prev.filter(status => status.id !== response.message.tempId));
+
+        if (payload.tempId) {
+          setMessageStatuses(prev => {
+            const updated = prev.map(status =>
+              status.id === payload.tempId 
+                ? { ...status, status: 'sent' as const }
+                : status
+            );
+            console.log('CRITICAL - Updated statuses:', updated);
+            return updated;
+          });
         }
       }
     };
 
-    socket.on('message_new', handleNewMessage);
-    socket.on('message_sent', handleMessageAck);
-
-    // Cleanup function
-    return () => {
-      console.log('CRITICAL - Cleaning up channel connection');
-      socket.off('message_new', handleNewMessage);
-      socket.off('message_sent', handleMessageAck);
-      socket.leaveChannel(channelId).catch(error => {
-        console.error('Error leaving channel:', error);
-      });
-      setIsJoined(false);
+    const handleMessageFailed = (payload: MessageFailedPayload) => {
+      console.log('CRITICAL - message:failed received:', payload);
+      
+      if (payload.processed && payload.status === MessageDeliveryStatus.FAILED) {
+        toast({
+          title: 'Error',
+          description: payload.error || 'Failed to send message',
+          variant: 'destructive'
+        });
+        
+        setLocalMessages(prev => prev.filter(msg => msg.id !== payload.tempId));
+        setMessageStatuses(prev => prev.filter(status => status.id !== payload.tempId));
+      }
     };
-  }, [socket, isConnected, channelId, toast]);
+
+    socket.on('message:delivered', handleMessageDelivered);
+    socket.on('message:created', handleMessageCreated);
+    socket.on('message:failed', handleMessageFailed);
+
+    return () => {
+      console.log('CRITICAL - Cleaning up socket listeners');
+      socket.off('message:delivered', handleMessageDelivered);
+      socket.off('message:created', handleMessageCreated);
+      socket.off('message:failed', handleMessageFailed);
+    };
+  }, [socket, isConnected, channelId, messageStatuses, localMessages]);
 
   const handleSendMessage = async () => {
-    console.log('[Send] Starting send message process:', {
+    console.log('[Send] ====== STARTING MESSAGE SEND FLOW ======');
+    console.log('[Send] Initial state:', {
       hasSocket: !!socket,
       messageContent: newMessage,
       isMessageEmpty: !newMessage.trim(),
-      isJoinedStatus: isJoined,
       socketConnected: socket?.isConnected(),
-      channelId
+      channelId,
+      userId,
+      userName: user?.fullName || user?.username
     });
 
-    if (!socket) {
-      console.log('[Send] Blocked: No socket');
+    if (!socket || !isConnected) {
+      console.log('[Send] ❌ Blocked: No socket connection');
       return;
     }
     if (!newMessage.trim()) {
-      console.log('[Send] Blocked: Empty message');
-      return;
-    }
-    if (!isJoined) {
-      console.log('[Send] Blocked: Not joined to channel');
+      console.log('[Send] ❌ Blocked: Empty message');
       return;
     }
     
     const content = newMessage.trim();
-    console.log('[Send] All checks passed, preparing message:', { content, channelId });
+    console.log('[Send] ✅ All checks passed, preparing message');
     setNewMessage(''); // Clear input immediately
     
+    // Create temporary message
+    const tempMessage: Message = {
+      id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${userId}`,
+      content,
+      channelId,
+      userId: userId || '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      user: {
+        id: userId || '',
+        name: user?.fullName || user?.username || 'Unknown User',
+        imageUrl: user?.imageUrl || undefined
+      } as MessageUser,
+      reactions: [],
+      isRead: false,
+      isDelivered: false,
+      replyToId: null
+    };
+    
     try {
-      // Create temporary message
-      const tempMessage: Message = {
-        id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${userId}`,
-        content,
-        channelId,
-        userId: userId || '',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        isRead: false,
-        isDelivered: false,
-        user: {
-          id: userId || '',
-          name: user?.fullName || user?.username || 'Unknown User'
-        },
-        reactions: []
-      };
-      
-      console.log('[Send] Created temp message:', tempMessage);
-      
       // Add temporary message to UI
       setLocalMessages(prev => [...prev, tempMessage]);
       setMessageStatuses(prev => [...prev, { id: tempMessage.id, status: 'sending' }]);
 
-      // Send message through socket
-      console.log('[Send] Sending message:', {
-        channelId,
+      // Send message through socket with correct payload
+      console.log('[Send] 🚀 Sending message:', {
         content,
+        channelId,
         tempId: tempMessage.id
       });
       
-      const response = await socket.sendMessage(channelId, content, tempMessage.id);
-      console.log('[Send] Message sent response:', response);
-
-      if (!response.success) {
-        throw new Error(response.error || 'Failed to send message');
-      }
-
-      // Update message status if successful
-      if (response.message) {
-        setLocalMessages(prev => prev.map(msg => 
-          msg.id === tempMessage.id ? response.message : msg
-        ));
-        setMessageStatuses(prev => prev.map(status =>
-          status.id === tempMessage.id ? { ...status, status: 'sent' } : status
-        ));
-      }
-    } catch (error) {
-      console.error('[Send] Error sending message:', error);
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to send message',
-        variant: 'destructive'
+      socket.emit('message:send', {
+        content,
+        channelId,
+        tempId: tempMessage.id
       });
-      // Remove the temporary message on failure
+
+      // Note: We don't need to handle response here anymore
+      // The socket event handlers above will handle all responses
+      console.log('[Send] ====== MESSAGE SEND COMPLETE ======');
+    } catch (error) {
+      console.error('[Send] ❌ Error sending message:', error);
+      // Remove the temporary message on error
       setLocalMessages(prev => prev.filter(msg => msg.id !== tempMessage.id));
       setMessageStatuses(prev => prev.filter(status => status.id !== tempMessage.id));
     }
@@ -373,15 +348,6 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
               <span className="text-green-500">Connected</span>
             ) : (
               <span className="text-red-500">Disconnected</span>
-            )}
-            {isConnected && (
-              <span className="ml-2">
-                {isJoined ? (
-                  <span className="text-green-500">(Joined)</span>
-                ) : (
-                  <span className="text-yellow-500">(Joining...)</span>
-                )}
-              </span>
             )}
           </div>
         </div>
@@ -475,7 +441,7 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
           />
           <button
             type="submit"
-            disabled={!newMessage.trim() || !isJoined}
+            disabled={!newMessage.trim() || !isConnected}
             className="min-w-[80px] px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Send
