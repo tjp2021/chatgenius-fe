@@ -17,6 +17,7 @@ import { useThreadStore } from '@/hooks/use-thread-store';
 import { ThreadView } from './thread-view';
 import { useThread } from '@/hooks/use-thread';
 import { SOCKET_EVENTS } from '@/constants/socket-events';
+import { MessageInput } from './message-input';
 
 interface ChatWindowProps {
   channelId: string;
@@ -480,30 +481,7 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
         </div>
 
         {/* Message Input */}
-        <div className="border-t">
-          <form 
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSendMessage();
-            }}
-            className="p-4 flex gap-2"
-          >
-            <input
-              type="text"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Type a message..."
-              className="flex-1 px-3 py-2 border rounded-md"
-            />
-            <button
-              type="submit"
-              disabled={!newMessage.trim() || !isConnected}
-              className="min-w-[80px] px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Send
-            </button>
-          </form>
-        </div>
+        <MessageInput channelId={channelId} />
       </div>
 
       {/* Thread view */}

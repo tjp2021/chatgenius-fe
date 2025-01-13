@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
-import { FileUploadState, ALLOWED_FILE_TYPES, MAX_FILE_SIZE } from '@/types/file';
+import { FileUploadState, ALLOWED_FILE_TYPES } from '@/types/file';
 import { uploadFile } from '@/api/files';
+import { useAuth } from '@clerk/nextjs';
 
 interface UseFileUploadOptions {
   onSuccess?: (metadata: any) => void;
@@ -8,6 +9,7 @@ interface UseFileUploadOptions {
 }
 
 export function useFileUpload(options: UseFileUploadOptions = {}) {
+  const { getToken } = useAuth();
   const [state, setState] = useState<FileUploadState>({
     file: null,
     progress: 0,
@@ -16,10 +18,7 @@ export function useFileUpload(options: UseFileUploadOptions = {}) {
 
   const validateFile = useCallback((file: File): string | null => {
     if (!ALLOWED_FILE_TYPES.includes(file.type as any)) {
-      return 'File type not supported';
-    }
-    if (file.size > MAX_FILE_SIZE) {
-      return 'File size exceeds 5MB limit';
+      return 'Only PDF files are supported';
     }
     return null;
   }, []);
@@ -50,7 +49,12 @@ export function useFileUpload(options: UseFileUploadOptions = {}) {
     setState(prev => ({ ...prev, status: 'uploading' }));
 
     try {
-      const metadata = await uploadFile(state.file, (progress) => {
+      const token = await getToken();
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+      
+      const metadata = await uploadFile(state.file, token, (progress) => {
         setState(prev => ({ ...prev, progress }));
       });
 
@@ -71,7 +75,7 @@ export function useFileUpload(options: UseFileUploadOptions = {}) {
       }));
       options.onError?.(new Error(errorMessage));
     }
-  }, [state.file, state.status, options]);
+  }, [state.file, state.status, options, getToken]);
 
   const reset = useCallback(() => {
     setState({

@@ -6,10 +6,11 @@ import { useDebounce } from '@/hooks/use-debounce';
 
 interface FileSearchProps {
   onFileSelect?: (file: FileMetadata) => void;
+  renderFileActions?: (file: FileMetadata) => React.ReactNode;
   className?: string;
 }
 
-export function FileSearch({ onFileSelect, className }: FileSearchProps) {
+export function FileSearch({ onFileSelect, renderFileActions, className }: FileSearchProps) {
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,27 +86,36 @@ export function FileSearch({ onFileSelect, className }: FileSearchProps) {
 
       <div className="space-y-2">
         {files.map((file) => (
-          <button
+          <div
             key={file.id}
-            onClick={() => onFileSelect?.(file)}
-            className="w-full p-4 bg-white border rounded-lg hover:bg-gray-50 transition-colors text-left"
+            className="w-full p-4 bg-white border rounded-lg hover:bg-gray-50 transition-colors"
           >
             <div className="flex justify-between items-center">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">
-                  {file.name}
-                </p>
-                <p className="text-sm text-gray-500">
-                  {formatFileSize(file.size)}
-                </p>
-              </div>
-              <div className="ml-4">
-                <span className="text-xs text-gray-400">
-                  {new Date(file.createdAt!).toLocaleDateString()}
-                </span>
-              </div>
+              <button
+                onClick={() => onFileSelect?.(file)}
+                className="flex-1 text-left"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {file.name}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    {formatFileSize(file.size)}
+                  </p>
+                </div>
+                <div className="ml-4">
+                  <span className="text-xs text-gray-400">
+                    {new Date(file.createdAt!).toLocaleDateString()}
+                  </span>
+                </div>
+              </button>
+              {renderFileActions && (
+                <div className="ml-4 flex-shrink-0">
+                  {renderFileActions(file)}
+                </div>
+              )}
             </div>
-          </button>
+          </div>
         ))}
       </div>
 

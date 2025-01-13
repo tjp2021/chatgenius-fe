@@ -1,6 +1,6 @@
 export type FileStatus = 'idle' | 'uploading' | 'success' | 'error';
 
-export type AllowedFileType = 'image/png' | 'image/jpeg' | 'application/pdf';
+export type AllowedFileType = 'application/pdf';
 
 export interface FileMetadata {
   id?: string;
@@ -28,9 +28,5 @@ export interface FileSearchResult {
 }
 
 export const ALLOWED_FILE_TYPES: AllowedFileType[] = [
-  'image/png',
-  'image/jpeg',
   'application/pdf',
-];
-
-export const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB 
+]; 

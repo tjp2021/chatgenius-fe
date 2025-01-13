@@ -6,6 +6,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Icons } from '@/components/ui/icons';
 import { useSocketMessages } from '@/hooks/use-socket-messages';
 import { cn } from '@/lib/utils';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { FileUpload } from '@/components/file/file-upload';
 
 interface MessageInputProps {
   channelId: string;
@@ -15,6 +17,7 @@ interface MessageInputProps {
 export function MessageInput({ channelId, className }: MessageInputProps) {
   const [content, setContent] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
 
@@ -25,18 +28,15 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
       setIsTyping(true);
     }
 
-    // Clear existing timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
 
-    // Set new timeout
     typingTimeoutRef.current = setTimeout(() => {
       setIsTyping(false);
     }, 2000);
   }, [isTyping]);
 
-  // Cleanup on unmount or channel change
   useEffect(() => {
     return () => {
       if (typingTimeoutRef.current) {
@@ -49,7 +49,6 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
     if (!content.trim()) return;
 
     try {
-      // Stop typing indicator before sending
       if (isTyping) {
         setIsTyping(false);
       }
@@ -78,6 +77,16 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
         }} 
         className="flex gap-2 p-4 border-t"
       >
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => setIsUploadOpen(true)}
+          className="flex-shrink-0"
+        >
+          <Icons.paperclip className="h-5 w-5" />
+        </Button>
+        
         <Textarea
           ref={textareaRef}
           value={content}
@@ -106,6 +115,23 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
           <Icons.send className="h-4 w-4" />
         </Button>
       </form>
+
+      <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Upload PDF File</DialogTitle>
+          </DialogHeader>
+          <FileUpload
+            onUploadComplete={(file) => {
+              console.log('File uploaded:', file);
+              setIsUploadOpen(false);
+            }}
+            onUploadError={(error) => {
+              console.error('Upload error:', error);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

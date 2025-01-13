@@ -6,9 +6,11 @@ import {
   CheckCheck,
   Clock,
   Edit,
+  FileText,
+  Paperclip,
   Plus,
   Send,
-  /* type LucideIcon */
+  X,
 } from 'lucide-react';
 
 export const Icons = {
@@ -17,6 +19,9 @@ export const Icons = {
   checkCheck: CheckCheck,
   clock: Clock,
   edit: Edit,
+  fileText: FileText,
+  paperclip: Paperclip,
   plus: Plus,
-  send: Send
+  send: Send,
+  x: X,
 } as const; 

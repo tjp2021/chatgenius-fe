@@ -108,7 +108,7 @@ export function FileUpload({
               or click to select a file
             </p>
             <p className="mt-1 text-xs text-gray-400">
-              Supported formats: PNG, JPEG, PDF (max 5MB)
+              Supported format: PDF files only
             </p>
           </div>
         )}
