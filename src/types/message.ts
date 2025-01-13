@@ -38,6 +38,10 @@ export interface Message {
   isRead: boolean;
   isDelivered: boolean;
   replyToId: string | null;
+  hasThread?: boolean;
+  threadParticipantCount?: number;
+  status?: MessageDeliveryStatus;
+  tempId?: string;
 }
 
 export interface MessagePayload {

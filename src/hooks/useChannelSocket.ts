@@ -1,260 +1,130 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useSocket } from '@/hooks/useSocket';
+import { useEffect, useState, useCallback } from 'react';
+import { useSocket } from '@/providers/socket-provider';
 import { Message } from '@/types/message';
 import { SocketResponse } from '@/types/socket';
 import { useToast } from '@/components/ui/use-toast';
+import { SOCKET_EVENTS } from '@/constants/socket-events';
 
 interface UseChannelSocketProps {
   channelId: string;
   userId: string;
-  onNewMessage?: (message: Message) => void;
-  onMessageDelivered?: (messageId: string) => void;
-  onMessageRead?: (messageId: string) => void;
-  onJoinSuccess?: () => void;
-  onLeaveSuccess?: () => void;
-  onError?: (error: Error) => void;
-  onTypingStart?: (userId: string) => void;
-  onTypingStop?: (userId: string) => void;
 }
 
-interface UseChannelSocketReturn {
-  joinChannel: () => Promise<void>;
-  leaveChannel: () => Promise<void>;
-  sendMessage: (content: string) => Promise<void>;
-  markAsRead: (messageId: string) => Promise<void>;
-  startTyping: () => void;
-  stopTyping: () => void;
-  isConnected: boolean;
-  error: Error | null;
-}
-
-export function useChannelSocket(props: UseChannelSocketProps): UseChannelSocketReturn {
-  const { socket, isConnected, error } = useSocket();
+export function useChannelSocket({ channelId, userId }: UseChannelSocketProps) {
+  const { socket } = useSocket();
   const { toast } = useToast();
-  const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout>();
+  const [isJoined, setIsJoined] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [typingUsers, setTypingUsers] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!socket || !props.channelId) return;
+    if (!socket || !channelId) return;
 
     const handleNewMessage = (message: Message) => {
-      if (message.channelId === props.channelId) {
-        props.onNewMessage?.(message);
+      // Handle new message
+      if (message.channelId === channelId) {
+        // Emit delivery confirmation
+        socket.emit(SOCKET_EVENTS.MESSAGE.RECEIVED, {
+          messageId: message.id,
+          processed: true
+        });
       }
     };
 
-    const handleMessageDelivered = (data: { messageId: string }) => {
-      props.onMessageDelivered?.(data.messageId);
+    const handleMessageDelivered = (messageId: string) => {
+      // Handle message delivered
     };
 
-    const handleMessageRead = (data: { messageId: string }) => {
-      props.onMessageRead?.(data.messageId);
+    const handleMessageRead = (messageId: string) => {
+      // Handle message read
     };
 
-    const handleTypingStart = (data: { userId: string, channelId: string }) => {
-      if (data.channelId === props.channelId && data.userId !== props.userId) {
-        props.onTypingStart?.(data.userId);
+    const handleTypingStart = (data: { userId: string; channelId: string }) => {
+      if (data.channelId === channelId && data.userId !== userId) {
+        setTypingUsers(prev => Array.from(new Set([...prev, data.userId])));
       }
     };
 
-    const handleTypingStop = (data: { userId: string, channelId: string }) => {
-      if (data.channelId === props.channelId && data.userId !== props.userId) {
-        props.onTypingStop?.(data.userId);
+    const handleTypingStop = (data: { userId: string; channelId: string }) => {
+      if (data.channelId === channelId) {
+        setTypingUsers(prev => prev.filter(id => id !== data.userId));
       }
     };
 
-    socket.on('message:new', handleNewMessage);
-    socket.on('message:delivered', handleMessageDelivered);
-    socket.on('message:read', handleMessageRead);
-    socket.on('typing:start', handleTypingStart);
-    socket.on('typing:stop', handleTypingStop);
+    socket.on(SOCKET_EVENTS.MESSAGE.NEW, handleNewMessage);
+    socket.on(SOCKET_EVENTS.MESSAGE.DELIVERED, handleMessageDelivered);
+    socket.on(SOCKET_EVENTS.MESSAGE.READ, handleMessageRead);
+    socket.on(SOCKET_EVENTS.TYPING.START, handleTypingStart);
+    socket.on(SOCKET_EVENTS.TYPING.STOP, handleTypingStop);
 
     return () => {
-      socket.off('message:new', handleNewMessage);
-      socket.off('message:delivered', handleMessageDelivered);
-      socket.off('message:read', handleMessageRead);
-      socket.off('typing:start', handleTypingStart);
-      socket.off('typing:stop', handleTypingStop);
+      socket.off(SOCKET_EVENTS.MESSAGE.NEW, handleNewMessage);
+      socket.off(SOCKET_EVENTS.MESSAGE.DELIVERED, handleMessageDelivered);
+      socket.off(SOCKET_EVENTS.MESSAGE.READ, handleMessageRead);
+      socket.off(SOCKET_EVENTS.TYPING.START, handleTypingStart);
+      socket.off(SOCKET_EVENTS.TYPING.STOP, handleTypingStop);
     };
-  }, [socket, props.channelId, props.userId]);
+  }, [socket, channelId, userId]);
 
-  const joinChannel = async () => {
-    if (!socket) {
-      toast({
-        title: "Error",
-        description: "Socket not connected",
-        variant: "destructive"
-      });
-      return;
-    }
+  const joinChannel = useCallback(async () => {
+    if (!socket || !channelId) return;
 
     try {
-      const response = await socket.joinChannel(props.channelId);
-
+      const response = await socket.emit(SOCKET_EVENTS.CHANNEL.JOIN, { channelId });
       if (response.success) {
-        props.onJoinSuccess?.();
+        setIsJoined(true);
       } else {
-        props.onError?.(new Error(response.error || 'Failed to join channel'));
         toast({
-          title: "Error",
+          title: 'Error',
           description: response.error || 'Failed to join channel',
-          variant: "destructive"
+          variant: 'destructive'
         });
       }
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to join channel');
-      props.onError?.(error);
+    } catch (error) {
+      console.error('Failed to join channel:', error);
       toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive"
+        title: 'Error',
+        description: 'Failed to join channel',
+        variant: 'destructive'
       });
     }
-  };
+  }, [socket, channelId, toast]);
 
-  const leaveChannel = async () => {
-    if (!socket) {
-      toast({
-        title: "Error",
-        description: "Socket not connected",
-        variant: "destructive"
-      });
-      return;
-    }
+  const leaveChannel = useCallback(async () => {
+    if (!socket || !channelId) return;
 
     try {
-      const response = await socket.leaveChannel(props.channelId);
-
+      const response = await socket.emit(SOCKET_EVENTS.CHANNEL.LEAVE, { channelId });
       if (response.success) {
-        props.onLeaveSuccess?.();
-      } else {
-        props.onError?.(new Error(response.error || 'Failed to leave channel'));
-        toast({
-          title: "Error",
-          description: response.error || 'Failed to leave channel',
-          variant: "destructive"
-        });
+        setIsJoined(false);
       }
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to leave channel');
-      props.onError?.(error);
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive"
-      });
+    } catch (error) {
+      console.error('Failed to leave channel:', error);
     }
-  };
+  }, [socket, channelId]);
 
-  const sendMessage = async (content: string) => {
-    if (!socket) {
-      toast({
-        title: "Error",
-        description: "Socket not connected",
-        variant: "destructive"
-      });
-      return;
-    }
+  const startTyping = useCallback(() => {
+    if (!socket || !channelId || isTyping) return;
 
-    try {
-      const response = await socket.sendMessage<Message>(props.channelId, content);
+    setIsTyping(true);
+    socket.emit(SOCKET_EVENTS.TYPING.START, { channelId });
+  }, [socket, channelId, isTyping]);
 
-      if (!response.success) {
-        props.onError?.(new Error(response.error || 'Failed to send message'));
-        toast({
-          title: "Error",
-          description: response.error || 'Failed to send message',
-          variant: "destructive"
-        });
-      }
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to send message');
-      props.onError?.(error);
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive"
-      });
-    }
-  };
+  const stopTyping = useCallback(() => {
+    if (!socket || !channelId || !isTyping) return;
 
-  const markAsRead = async (messageId: string) => {
-    if (!socket) {
-      toast({
-        title: "Error",
-        description: "Socket not connected",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    try {
-      const response = await socket.emit<void>('message:read', {
-        messageId
-      });
-
-      if (!response.success) {
-        props.onError?.(new Error(response.error || 'Failed to mark message as read'));
-        toast({
-          title: "Error",
-          description: response.error || 'Failed to mark message as read',
-          variant: "destructive"
-        });
-      }
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to mark message as read');
-      props.onError?.(error);
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive"
-      });
-    }
-  };
-
-  const startTyping = () => {
-    if (!socket) return;
-
-    socket.emit('typing:start', {
-      channelId: props.channelId,
-      userId: props.userId
-    });
-
-    // Clear existing timeout
-    if (typingTimeout) {
-      clearTimeout(typingTimeout);
-    }
-
-    // Set new timeout to stop typing after 3 seconds
-    const timeout = setTimeout(() => {
-      stopTyping();
-    }, 3000);
-
-    setTypingTimeout(timeout);
-  };
-
-  const stopTyping = () => {
-    if (!socket) return;
-
-    socket.emit('typing:stop', {
-      channelId: props.channelId,
-      userId: props.userId
-    });
-
-    if (typingTimeout) {
-      clearTimeout(typingTimeout);
-    }
-  };
+    setIsTyping(false);
+    socket.emit(SOCKET_EVENTS.TYPING.STOP, { channelId });
+  }, [socket, channelId, isTyping]);
 
   return {
+    isJoined,
+    typingUsers,
     joinChannel,
     leaveChannel,
-    sendMessage,
-    markAsRead,
     startTyping,
-    stopTyping,
-    isConnected,
-    error
+    stopTyping
   };
 } 

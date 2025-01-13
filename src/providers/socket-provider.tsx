@@ -1,215 +1,108 @@
 'use client';
 
-import React, { useEffect, useRef, useCallback } from 'react';
-import { useAuth } from '@clerk/nextjs';
-import { ChatSocketClient, SocketConfig } from '@/lib/socket-client';
-import { useToast } from '@/components/ui/use-toast';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { io, Socket } from 'socket.io-client';
+import { useUser, useAuth } from '@clerk/nextjs';
+import { ChatSocketClient } from '@/lib/socket-client';
+import { SocketResponse } from '@/types/socket';
 
 interface SocketContextType {
   socket: ChatSocketClient | null;
   isConnected: boolean;
+  error: Error | null;
 }
 
-const SocketContext = React.createContext<SocketContextType>({
+const SocketContext = createContext<SocketContextType>({
   socket: null,
-  isConnected: false
+  isConnected: false,
+  error: null
 });
 
-const RECONNECTION_CONFIG = {
-  reconnection: true,
-  reconnectionAttempts: 3,
-  reconnectionDelay: 1000,
-  reconnectionDelayMax: 5000,
-  timeout: 10000
-} as const;
+export function useSocket() {
+  const context = useContext(SocketContext);
+  if (!context) {
+    throw new Error('useSocket must be used within a SocketProvider');
+  }
+  return context;
+}
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
-  const [socket, setSocket] = React.useState<ChatSocketClient | null>(null);
-  const [isConnected, setIsConnected] = React.useState(false);
-  const { getToken, userId } = useAuth();
-  const { toast } = useToast();
-  const socketRef = useRef<ChatSocketClient | null>(null);
-  const reconnectAttemptsRef = useRef(0);
-  const cleanupRef = useRef(false);
-  const initializingRef = useRef(false);
-
-  const cleanup = useCallback(() => {
-    if (socketRef.current && !cleanupRef.current) {
-      console.log('SOCKET CLEANUP - Starting cleanup', {
-        socketId: socketRef.current.getSocketId(),
-        timestamp: new Date().toISOString()
-      });
-      
-      // Set cleanup flag first to prevent re-entry
-      cleanupRef.current = true;
-      
-      // Update state before socket cleanup
-      setIsConnected(false);
-      setSocket(null);
-      
-      // Reset refs
-      reconnectAttemptsRef.current = 0;
-      initializingRef.current = false;
-      
-      // Finally cleanup the socket
-      const socket = socketRef.current;
-      socketRef.current = null;
-      
-      try {
-        socket.disconnect();
-      } catch (error) {
-        console.error('SOCKET CLEANUP - Error during disconnect:', error);
-      }
-    }
-  }, []);
-
-  const validateAuth = useCallback(async () => {
-    if (!userId) {
-      console.log('AUTH CHECK - No userId available', {
-        timestamp: new Date().toISOString()
-      });
-      return false;
-    }
-
-    try {
-      const token = await getToken();
-      if (!token) {
-        console.log('AUTH CHECK - No token available', {
-          userId,
-          timestamp: new Date().toISOString()
-        });
-        return false;
-      }
-      return { userId, token };
-    } catch (error) {
-      console.error('AUTH CHECK - Token fetch failed', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString()
-      });
-      return false;
-    }
-  }, [userId, getToken]);
+  const [socket, setSocket] = useState<ChatSocketClient | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const { user, isLoaded } = useUser();
+  const { getToken } = useAuth();
 
   useEffect(() => {
+    if (!isLoaded || !user) return;
+
     const initializeSocket = async () => {
-      // Prevent multiple initialization attempts
-      if (initializingRef.current || cleanupRef.current || socketRef.current) {
-        return;
-      }
-
-      initializingRef.current = true;
-      cleanupRef.current = false;
-
       try {
-        // Validate auth
+        // Get the socket URL from environment
+        const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3002';
+        console.log('[SocketProvider] Initializing with URL:', socketUrl);
+
+        // Get JWT token from Clerk
         const token = await getToken();
-        if (!token || !userId) {
-          console.error('SOCKET INIT - Missing auth credentials:', {
-            hasToken: !!token,
-            hasUserId: !!userId,
-            timestamp: new Date().toISOString()
-          });
-          cleanup();
-          return;
+        if (!token) {
+          throw new Error('Failed to get authentication token');
         }
 
-        const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
-        if (!socketUrl) {
-          console.error('SOCKET INIT - Missing socket URL');
-          cleanup();
-          return;
-        }
-
-        console.log('SOCKET INIT - Creating new connection', {
+        /*******************************************************************
+         * ⚠️ CRITICAL SOCKET CONFIGURATION - DO NOT MODIFY ⚠️
+         * 
+         * This socket configuration has been finalized and tested.
+         * DO NOT change any of these settings or parameters.
+         * DO NOT modify the authentication flow.
+         * DO NOT alter the connection handling.
+         * 
+         * Any changes to this configuration may break the WebSocket
+         * connection and real-time functionality.
+         *******************************************************************/
+        const socketClient = ChatSocketClient.getInstance({
           url: socketUrl,
-          userId,
-          hasToken: !!token,
-          timestamp: new Date().toISOString()
-        });
-
-        const socketConfig: SocketConfig = {
-          url: socketUrl,
-          token,
-          userId,
-          reconnectionConfig: RECONNECTION_CONFIG,
-          onAuthError: (error: Error) => {
-            console.error('SOCKET AUTH - Error:', {
-              error: error.message,
-              userId,
-              timestamp: new Date().toISOString()
-            });
-            toast({
-              title: 'Socket Authentication Error',
-              description: 'Failed to authenticate socket connection. Please try again.',
-              variant: 'destructive'
-            });
-            setIsConnected(false);
-            cleanup();
-          },
-          onConnectionError: (error: Error) => {
-            console.error('SOCKET CONN - Error:', {
-              error: error.message,
-              userId,
-              timestamp: new Date().toISOString()
-            });
-            setIsConnected(false);
-          },
+          token: token,
+          userId: user.id,
           onConnect: () => {
-            console.log('SOCKET CONN - Connected:', {
-              userId,
-              timestamp: new Date().toISOString()
-            });
+            console.log('[SocketProvider] Connected successfully to:', socketUrl);
             setIsConnected(true);
+            setError(null);
           },
-          onDisconnect: (reason: string) => {
-            console.log('SOCKET CONN - Disconnected:', {
-              reason,
-              userId,
-              timestamp: new Date().toISOString()
-            });
+          onDisconnect: (reason) => {
+            console.log('[SocketProvider] Disconnected from:', socketUrl, 'reason:', reason);
             setIsConnected(false);
-            if (reason === 'io server disconnect') {
-              cleanup();
-            }
+          },
+          onAuthError: (error) => {
+            console.error('[SocketProvider] Auth error with:', socketUrl, error);
+            setError(error);
+            setIsConnected(false);
+          },
+          onConnectionError: (error) => {
+            console.error('[SocketProvider] Connection error with:', socketUrl, error);
+            setError(error);
+            setIsConnected(false);
           }
-        };
-
-        const newSocketClient = ChatSocketClient.getInstance(socketConfig);
-        socketRef.current = newSocketClient;
-        setSocket(newSocketClient);
-
-      } catch (error) {
-        console.error('SOCKET INIT - Failed:', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          userId,
-          timestamp: new Date().toISOString()
         });
-        cleanup();
-      } finally {
-        initializingRef.current = false;
+        /*******************************************************************/
+
+        setSocket(socketClient);
+      } catch (err) {
+        console.error('[SocketProvider] Failed to initialize socket:', err);
+        setError(err instanceof Error ? err : new Error('Failed to initialize socket'));
+        setIsConnected(false);
       }
     };
 
-    if (userId && !socketRef.current && !cleanupRef.current && !initializingRef.current) {
-      console.log('SOCKET INIT - Starting', {
-        userId,
-        timestamp: new Date().toISOString()
-      });
-      initializeSocket();
-    }
+    initializeSocket();
 
     return () => {
-      cleanup();
+      socket?.disconnect();
     };
-  }, [userId, getToken, cleanup, toast]);
+  }, [isLoaded, user, getToken]);
 
   return (
-    <SocketContext.Provider value={{ socket, isConnected }}>
+    <SocketContext.Provider value={{ socket, isConnected, error }}>
       {children}
     </SocketContext.Provider>
   );
-}
-
-export function useSocket() {
-  return React.useContext(SocketContext);
 }

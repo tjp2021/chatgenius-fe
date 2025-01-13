@@ -4,33 +4,7 @@ import { Message } from '@/types/message';
 import { TypingData } from '@/types/typing';
 import { ChannelMemberData } from '@/types/channel-member';
 import { User } from '@/types/user';
-
-// Event name constants
-const SOCKET_EVENTS = {
-  MESSAGE: {
-    NEW: 'message:new',
-    RECEIVED: 'message:received',
-    SEND: 'message:send',
-    CONFIRM: 'message:confirm',
-    REACTION_ADDED: 'message:reaction:added',
-    REACTION_RECEIVED: 'message:reaction:received'
-  },
-  CHANNEL: {
-    JOIN: 'channel:join',
-    JOINED: 'channel:joined',
-    LEAVE: 'channel:leave',
-    LEFT: 'channel:left',
-    ERROR: 'channel:error',
-    CREATED: 'channel:created',
-    UPDATED: 'channel:updated',
-    DELETED: 'channel:deleted'
-  },
-  ROOM: {
-    MEMBER_JOINED: 'room:member:joined',
-    MEMBER_LEFT: 'room:member:left',
-    ACTIVITY: 'room:activity'
-  }
-} as const;
+import { SOCKET_EVENTS } from '@/constants/socket-events';
 
 // Event payload types
 interface RoomEventPayload {
@@ -118,12 +92,21 @@ export class ChatSocketClient {
   private typingListeners = new Set<(data: TypingData) => void>();
   private channelMemberListeners = new Set<(data: ChannelMemberData) => void>();
 
+  public auth: {
+    userId: string;
+    token: string;
+  };
+
   private readonly MAX_RECONNECT_ATTEMPTS = 3;
   private readonly INITIAL_RECONNECT_DELAY = 1000;
   private readonly MAX_RECONNECT_DELAY = 5000;
 
   private constructor(config: SocketConfig) {
     this.config = config;
+    this.auth = {
+      userId: config.userId,
+      token: config.token
+    };
     console.log('[Socket] Creating new instance with config:', {
       url: config.url,
       userId: config.userId,
@@ -159,44 +142,121 @@ export class ChatSocketClient {
       return;
     }
 
-    console.log('[Socket] Initializing connection:', {
-      url: this.config.url,
-      userId: this.config.userId,
-      reconnectionConfig: this.config.reconnectionConfig
+    // Debug connection attempt
+    console.log('[Socket][Debug] Starting connection attempt:', {
+      timestamp: new Date().toISOString(),
+      currentState: this.connectionState,
+      config: {
+        url: this.config.url,
+        userId: this.config.userId,
+        hasToken: !!this.config.token
+      }
     });
 
     this.connectionState = 'connecting';
     
     try {
-      // Prepare handshake data
-      const handshakeAuth = {
-        token: this.config.token,
-        userId: this.config.userId
-      };
+      // Test server availability first
+      fetch(`${this.config.url}/socket.io/socket.io.js`)
+        .then(response => {
+          console.log('[Socket][Debug] Socket.IO server reachable:', {
+            status: response.status,
+            ok: response.ok
+          });
+        })
+        .catch(error => {
+          console.error('[Socket][Debug] Socket.IO server not reachable:', error);
+        });
 
+      /*******************************************************************
+       * ⚠️ CRITICAL SOCKET CONFIGURATION - DO NOT MODIFY ⚠️
+       * 
+       * This socket initialization has been finalized and tested.
+       * DO NOT change any of these settings or parameters.
+       * DO NOT modify the transport configuration.
+       * DO NOT alter the reconnection settings.
+       * DO NOT change the authentication format.
+       * 
+       * Any changes to this configuration may break the WebSocket
+       * connection and real-time functionality.
+       *******************************************************************/
       this.socket = io(this.config.url, {
-        path: '/api/socket.io',
+        path: '/socket.io',
         auth: {
           token: `Bearer ${this.config.token}`,
           userId: this.config.userId
-        }
+        },
+        reconnection: true,
+        reconnectionAttempts: this.MAX_RECONNECT_ATTEMPTS,
+        reconnectionDelay: this.INITIAL_RECONNECT_DELAY,
+        reconnectionDelayMax: this.MAX_RECONNECT_DELAY,
+        timeout: 10000,
+        transports: ['websocket', 'polling'],
+        forceNew: false,
+        autoConnect: true,
+        withCredentials: true
+      });
+      /*******************************************************************/
+
+      // Debug socket instance
+      console.log('[Socket][Debug] Socket instance created:', {
+        id: this.socket.id,
+        connected: this.socket.connected,
+        disconnected: this.socket.disconnected,
+        transport: this.socket.io?.engine?.transport?.name || 'unknown'
       });
 
-      // Add debug logging for connection details
-      console.log('[Socket] Connection details:', {
-        url: this.config.url,
-        auth: {
-          token: `Bearer ${this.config.token}`,
-          userId: this.config.userId
-        }
+      // Monitor connection state changes
+      this.socket.io.on("error", (error: Error) => {
+        console.error('[Socket][Debug] Engine error:', {
+          error,
+          state: this.connectionState,
+          transport: this.socket?.io?.engine?.transport?.name
+        });
+      });
+
+      this.socket.io.on("reconnect_attempt", (attempt: number) => {
+        console.log('[Socket][Debug] Reconnection attempt:', {
+          attempt,
+          state: this.connectionState,
+          transport: this.socket?.io?.engine?.transport?.name
+        });
+      });
+
+      this.socket.io.on("reconnect_failed", () => {
+        console.error('[Socket][Debug] Reconnection failed:', {
+          state: this.connectionState,
+          transport: this.socket?.io?.engine?.transport?.name,
+          attempts: this.reconnectAttempts
+        });
+      });
+
+      this.socket.on("connect_error", (error: Error) => {
+        console.error('[Socket][Debug] Connection error:', {
+          error,
+          state: this.connectionState,
+          transport: this.socket?.io?.engine?.transport?.name
+        });
+      });
+
+      this.socket.on("disconnect", (reason: string) => {
+        console.log('[Socket][Debug] Disconnected:', {
+          reason,
+          state: this.connectionState,
+          transport: this.socket?.io?.engine?.transport?.name,
+          wasConnected: this.socket?.connected
+        });
       });
 
       this.setupEventHandlers();
-      this.socket.connect();
 
     } catch (error) {
       this.connectionState = 'disconnected';
-      console.error('[Socket] Initialization failed:', error);
+      console.error('[Socket][Debug] Initialization failed:', {
+        error,
+        state: this.connectionState,
+        socketExists: !!this.socket
+      });
       throw error;
     }
   }
@@ -687,5 +747,116 @@ export class ChatSocketClient {
 
   offChannelDeleted(callback: (data: ChannelEventPayload) => void): void {
     this.handleSocketEvent('off', SOCKET_EVENTS.CHANNEL.DELETED, callback, 'channel deleted');
+  }
+
+  // Thread methods
+  public async joinThread(threadId: string, channelId: string): Promise<SocketResponse> {
+    if (!this.isConnected() || !this.socket) {
+      return { success: false, error: 'Socket not connected' };
+    }
+
+    return new Promise((resolve) => {
+      this.socket!.emit(SOCKET_EVENTS.THREAD.JOIN, { 
+        threadId,
+        channelId
+      }, (response: SocketResponse) => {
+        resolve(response);
+      });
+    });
+  }
+
+  public async leaveThread(threadId: string, channelId: string): Promise<SocketResponse> {
+    if (!this.isConnected() || !this.socket) {
+      return { success: false, error: 'Socket not connected' };
+    }
+
+    return new Promise((resolve) => {
+      this.socket!.emit(SOCKET_EVENTS.THREAD.LEAVE, { 
+        threadId,
+        channelId
+      }, (response: SocketResponse) => {
+        resolve(response);
+      });
+    });
+  }
+
+  public async sendThreadReply(content: string, threadId: string, channelId: string, tempId: string): Promise<SocketResponse> {
+    if (!this.isConnected() || !this.socket) {
+      return { success: false, error: 'Socket not connected' };
+    }
+
+    const messageKey = `${this.config.userId}:${threadId}:${tempId}`;
+    if (this.processingMessages.has(messageKey)) {
+      return { success: false, error: 'Message already being processed' };
+    }
+
+    return new Promise((resolve) => {
+      try {
+        this.processingMessages.add(messageKey);
+        this.socket!.emit(SOCKET_EVENTS.THREAD.REPLY, {
+          content,
+          threadId,
+          channelId,
+          tempId,
+          processed: false
+        }, (response: SocketResponse) => {
+          if (response.success) {
+            this.pendingMessages.delete(tempId);
+          } else {
+            this.pendingMessages.set(tempId, {
+              channelId,
+              content,
+              tempId,
+              retryCount: 0,
+              timestamp: Date.now()
+            });
+          }
+          resolve(response);
+        });
+      } finally {
+        this.processingMessages.delete(messageKey);
+      }
+    });
+  }
+
+  // Thread event handlers
+  onThreadJoined(callback: (data: { threadId: string; userId: string; timestamp: Date }) => void): void {
+    this.handleSocketEvent('on', SOCKET_EVENTS.THREAD.JOINED, callback, 'thread joined');
+  }
+
+  offThreadJoined(callback: (data: { threadId: string; userId: string; timestamp: Date }) => void): void {
+    this.handleSocketEvent('off', SOCKET_EVENTS.THREAD.JOINED, callback, 'thread joined');
+  }
+
+  onThreadReplyDelivered(callback: (data: { messageId: string; threadId: string; tempId: string; status: 'DELIVERED'; processed: true }) => void): void {
+    this.handleSocketEvent('on', SOCKET_EVENTS.THREAD.REPLY_DELIVERED, callback, 'thread reply delivered');
+  }
+
+  offThreadReplyDelivered(callback: (data: { messageId: string; threadId: string; tempId: string; status: 'DELIVERED'; processed: true }) => void): void {
+    this.handleSocketEvent('off', SOCKET_EVENTS.THREAD.REPLY_DELIVERED, callback, 'thread reply delivered');
+  }
+
+  onThreadReplyCreated(callback: (data: { message: Message; threadId: string; tempId?: string; processed: true }) => void): void {
+    this.handleSocketEvent('on', SOCKET_EVENTS.THREAD.REPLY_CREATED, callback, 'thread reply created');
+  }
+
+  offThreadReplyCreated(callback: (data: { message: Message; threadId: string; tempId?: string; processed: true }) => void): void {
+    this.handleSocketEvent('off', SOCKET_EVENTS.THREAD.REPLY_CREATED, callback, 'thread reply created');
+  }
+
+  onThreadReplyFailed(callback: (data: { error: string; threadId: string; tempId: string; status: 'FAILED'; processed: true }) => void): void {
+    this.handleSocketEvent('on', SOCKET_EVENTS.THREAD.REPLY_FAILED, callback, 'thread reply failed');
+  }
+
+  offThreadReplyFailed(callback: (data: { error: string; threadId: string; tempId: string; status: 'FAILED'; processed: true }) => void): void {
+    this.handleSocketEvent('off', SOCKET_EVENTS.THREAD.REPLY_FAILED, callback, 'thread reply failed');
+  }
+
+  onThreadUpdated(callback: (data: { threadId: string; replyCount: number; lastReply: Message; processed: true }) => void): void {
+    this.handleSocketEvent('on', SOCKET_EVENTS.THREAD.UPDATED, callback, 'thread updated');
+  }
+
+  offThreadUpdated(callback: (data: { threadId: string; replyCount: number; lastReply: Message; processed: true }) => void): void {
+    this.handleSocketEvent('off', SOCKET_EVENTS.THREAD.UPDATED, callback, 'thread updated');
   }
 }

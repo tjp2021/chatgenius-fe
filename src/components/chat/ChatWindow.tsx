@@ -5,7 +5,7 @@ import { useSocket } from '@/providers/socket-provider';
 import { Message, MessageDeliveryStatus, MessageUser } from '@/types/message';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@clerk/nextjs';
-import { CheckIcon, CheckCheckIcon, Send, Loader2 } from 'lucide-react';
+import { CheckIcon, CheckCheckIcon, Send, Loader2, MessageSquare } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useChannelContext } from '@/contexts/channel-context';
@@ -13,6 +13,10 @@ import { cn } from '@/lib/utils';
 import { useUser } from '@clerk/nextjs';
 import { useMessageHistory } from '@/hooks/use-message-history';
 import { MessageReactions } from './message-reactions';
+import { useThreadStore } from '@/hooks/use-thread-store';
+import { ThreadView } from './thread-view';
+import { useThread } from '@/hooks/use-thread';
+import { SOCKET_EVENTS } from '@/constants/socket-events';
 
 interface ChatWindowProps {
   channelId: string;
@@ -79,31 +83,33 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
     fetchMessages
   } = useMessageHistory();
 
+  // Replace thread store with thread hook
+  const { createThread } = useThread();
+  const { isLoading: isThreadLoading, activeThread } = useThreadStore();
+
   // Combine history messages with local messages
   const messages = useMemo(() => {
-    // Create a Set of message IDs to track duplicates
-    const messageIds = new Set<string>();
-    const combinedMessages: Message[] = [];
+    // Create a Map to store unique messages, with the most recent version taking precedence
+    const messageMap = new Map<string, Message>();
 
-    // Add history messages first
-    historyMessages.forEach(msg => {
-      if (!messageIds.has(msg.id)) {
-        messageIds.add(msg.id);
-        combinedMessages.push(msg);
-      }
-    });
-
-    // Add local messages, avoiding duplicates
+    // Add local messages first (they take precedence)
     localMessages.forEach(msg => {
-      // For temporary messages (those being sent), always include them
-      if (msg.id.startsWith('temp-') || !messageIds.has(msg.id)) {
-        messageIds.add(msg.id);
-        combinedMessages.push(msg);
+      // Only add messages that are not replies (no replyToId)
+      if (!msg.replyToId) {
+        messageMap.set(msg.id, msg);
       }
     });
 
-    // Sort messages by creation time
-    return combinedMessages.sort((a, b) => 
+    // Add history messages if they don't exist in local messages
+    historyMessages.forEach(msg => {
+      // Only add messages that are not replies (no replyToId)
+      if (!msg.replyToId && !messageMap.has(msg.id)) {
+        messageMap.set(msg.id, msg);
+      }
+    });
+
+    // Convert map to array and sort by creation time
+    return Array.from(messageMap.values()).sort((a, b) => 
       new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
   }, [historyMessages, localMessages]);
@@ -216,15 +222,38 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
       }
     };
 
-    socket.on('message:delivered', handleMessageDelivered);
-    socket.on('message:created', handleMessageCreated);
-    socket.on('message:failed', handleMessageFailed);
+    const handleNewMessage = (message: Message) => {
+      console.log('CRITICAL - message:new received:', message);
+      
+      // Only add the message if it's not already in our local messages
+      // and it's for the current channel
+      if (message.channelId === channelId) {
+        setLocalMessages(prev => {
+          if (prev.some(m => m.id === message.id)) {
+            return prev;
+          }
+          return [...prev, message];
+        });
+
+        // Send delivery confirmation
+        socket.emit(SOCKET_EVENTS.MESSAGE.RECEIVED, {
+          messageId: message.id,
+          processed: true
+        });
+      }
+    };
+
+    socket.on(SOCKET_EVENTS.MESSAGE.DELIVERED, handleMessageDelivered);
+    socket.on(SOCKET_EVENTS.MESSAGE.CREATED, handleMessageCreated);
+    socket.on(SOCKET_EVENTS.MESSAGE.FAILED, handleMessageFailed);
+    socket.on(SOCKET_EVENTS.MESSAGE.NEW, handleNewMessage);
 
     return () => {
       console.log('CRITICAL - Cleaning up socket listeners');
-      socket.off('message:delivered', handleMessageDelivered);
-      socket.off('message:created', handleMessageCreated);
-      socket.off('message:failed', handleMessageFailed);
+      socket.off(SOCKET_EVENTS.MESSAGE.DELIVERED, handleMessageDelivered);
+      socket.off(SOCKET_EVENTS.MESSAGE.CREATED, handleMessageCreated);
+      socket.off(SOCKET_EVENTS.MESSAGE.FAILED, handleMessageFailed);
+      socket.off(SOCKET_EVENTS.MESSAGE.NEW, handleNewMessage);
     };
   }, [socket, isConnected, channelId, messageStatuses, localMessages]);
 
@@ -338,116 +367,147 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
   }, [historyMessages]);
 
   return (
-    <div className="flex flex-col h-[600px] w-full max-w-2xl mx-auto bg-white rounded-lg shadow-lg overflow-hidden">
-      {/* Header */}
-      <div className="p-4 border-b">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Channel: {channelName}</h2>
-          <div className="text-sm text-gray-500">
-            {isConnected ? (
-              <span className="text-green-500">Connected</span>
-            ) : (
-              <span className="text-red-500">Disconnected</span>
-            )}
+    <div className="flex h-[600px] w-full max-w-4xl mx-auto bg-white rounded-lg shadow-lg overflow-hidden">
+      {/* Main chat area */}
+      <div className="flex flex-col flex-1">
+        {/* Header */}
+        <div className="p-4 border-b">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Channel: {channelName}</h2>
+            <div className="text-sm text-gray-500">
+              {isConnected ? (
+                <span className="text-green-500">Connected</span>
+              ) : (
+                <span className="text-red-500">Disconnected</span>
+              )}
+            </div>
           </div>
+        </div>
+
+        {/* Messages */}
+        <div 
+          ref={messagesContainerRef}
+          className="flex-1 p-4 overflow-y-auto bg-gray-50 space-y-4"
+        >
+          {error && (
+            <div className="text-center text-red-500 py-2">
+              {error}
+            </div>
+          )}
+          
+          {nextCursor && (
+            <button
+              onClick={handleLoadMore}
+              disabled={isLoading}
+              className="w-full text-center text-sm text-gray-500 hover:text-gray-700 py-2"
+            >
+              {isLoading ? 'Loading...' : 'Load more messages'}
+            </button>
+          )}
+
+          {messages.map((message) => (
+            <div
+              key={`${message.id}-${message.createdAt}`}
+              className="flex flex-col items-start"
+            >
+              <div className="flex flex-col space-y-2">
+                <span className="text-sm font-medium text-gray-600">
+                  {message.user?.name || 'Unknown User'}
+                </span>
+                <div className={cn(
+                  "px-4 py-2 rounded-lg",
+                  message.userId === userId 
+                    ? "bg-green-100 text-black" 
+                    : "bg-gray-100 text-gray-900"
+                )}>
+                  {message.content}
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  {userId && (
+                    <MessageReactions
+                      message={message}
+                      currentUserId={userId}
+                    />
+                  )}
+                  <button
+                    className={cn(
+                      "p-1.5 rounded-full hover:bg-gray-100 transition-colors",
+                      (isThreadLoading || activeThread?.id === message.id) && "text-blue-500"
+                    )}
+                    onClick={async () => {
+                      try {
+                        await createThread(message.id, {
+                          content: message.content,
+                          createdAt: message.createdAt,
+                          user: message.user
+                        });
+                      } catch (error) {
+                        toast({
+                          title: "Error",
+                          description: "Failed to create thread",
+                          variant: "destructive",
+                        });
+                      }
+                    }}
+                    disabled={isThreadLoading}
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+                <span>{new Date(message.createdAt).toLocaleTimeString()}</span>
+                {message.userId === userId && (
+                  <>
+                    {messageStatuses.find(status => status.id === message.id)?.status === 'sending' && (
+                      <span className="flex items-center gap-1">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Sending
+                      </span>
+                    )}
+                    {messageStatuses.find(status => status.id === message.id)?.status === 'sent' && (
+                      <CheckIcon className="h-3 w-3" />
+                    )}
+                    {messageStatuses.find(status => status.id === message.id)?.status === 'delivered' && (
+                      <CheckCheckIcon className="h-3 w-3" />
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Message Input */}
+        <div className="border-t">
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSendMessage();
+            }}
+            className="p-4 flex gap-2"
+          >
+            <input
+              type="text"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder="Type a message..."
+              className="flex-1 px-3 py-2 border rounded-md"
+            />
+            <button
+              type="submit"
+              disabled={!newMessage.trim() || !isConnected}
+              className="min-w-[80px] px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Send
+            </button>
+          </form>
         </div>
       </div>
 
-      {/* Messages */}
-      <div 
-        ref={messagesContainerRef}
-        className="flex-1 p-4 overflow-y-auto bg-gray-50 space-y-4"
-      >
-        {error && (
-          <div className="text-center text-red-500 py-2">
-            {error}
-          </div>
-        )}
-        
-        {nextCursor && (
-          <button
-            onClick={handleLoadMore}
-            disabled={isLoading}
-            className="w-full text-center text-sm text-gray-500 hover:text-gray-700 py-2"
-          >
-            {isLoading ? 'Loading...' : 'Load more messages'}
-          </button>
-        )}
-
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className="flex flex-col items-start"
-          >
-            <div className="flex flex-col space-y-2">
-              <span className="text-sm font-medium text-gray-600">
-                {message.user?.name || 'Unknown User'}
-              </span>
-              <div className={cn(
-                "px-4 py-2 rounded-lg",
-                message.userId === userId 
-                  ? "bg-green-100 text-black" 
-                  : "bg-gray-100 text-gray-900"
-              )}>
-                {message.content}
-              </div>
-              
-              {/* Add MessageReactions component */}
-              {userId && (
-                <MessageReactions
-                  message={message}
-                  currentUserId={userId}
-                />
-              )}
-            </div>
-            <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
-              <span>{new Date(message.createdAt).toLocaleTimeString()}</span>
-              {message.userId === userId && (
-                <>
-                  {messageStatuses.find(status => status.id === message.id)?.status === 'sending' && (
-                    <span className="flex items-center gap-1">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      Sending
-                    </span>
-                  )}
-                  {messageStatuses.find(status => status.id === message.id)?.status === 'sent' && (
-                    <CheckIcon className="h-3 w-3" />
-                  )}
-                  {messageStatuses.find(status => status.id === message.id)?.status === 'delivered' && (
-                    <CheckCheckIcon className="h-3 w-3" />
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Message Input */}
-      <div className="border-t">
-        <form 
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSendMessage();
-          }}
-          className="p-4 flex gap-2"
-        >
-          <input
-            type="text"
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Type a message..."
-            className="flex-1 px-3 py-2 border rounded-md"
-          />
-          <button
-            type="submit"
-            disabled={!newMessage.trim() || !isConnected}
-            className="min-w-[80px] px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Send
-          </button>
-        </form>
-      </div>
+      {/* Thread view */}
+      <ThreadView />
     </div>
   );
 } 

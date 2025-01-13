@@ -4,7 +4,8 @@ import { nanoid } from 'nanoid';
 import { useState, useEffect, useCallback } from 'react';
 import { useSocket } from '@/providers/socket-provider';
 import type { Message } from '@/types/message';
-import { MessageEvent } from '@/types/message';
+import { MessageDeliveryStatus } from '@/types/message';
+import { SOCKET_EVENTS } from '@/constants/socket-events';
 
 export function useSocketMessages(channelId: string) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -13,26 +14,30 @@ export function useSocketMessages(channelId: string) {
   useEffect(() => {
     if (!socket || !channelId) return;
 
-    socket.on('message:new', (message: Message) => {
+    const handleNewMessage = (message: Message) => {
       setMessages(prev => [...prev, message]);
-    });
+    };
 
-    socket.on('message:delivered', (messageId: string) => {
+    const handleMessageDelivered = (messageId: string) => {
       setMessages(prev => prev.map(msg => 
-        msg.id === messageId ? { ...msg, status: MessageEvent.DELIVERED } : msg
+        msg.id === messageId ? { ...msg, status: MessageDeliveryStatus.DELIVERED } : msg
       ));
-    });
+    };
 
-    socket.on('message:read', (messageId: string) => {
+    const handleMessageRead = (messageId: string) => {
       setMessages(prev => prev.map(msg => 
-        msg.id === messageId ? { ...msg, status: MessageEvent.READ } : msg
+        msg.id === messageId ? { ...msg, status: MessageDeliveryStatus.READ } : msg
       ));
-    });
+    };
+
+    socket.on(SOCKET_EVENTS.MESSAGE.NEW, handleNewMessage);
+    socket.on(SOCKET_EVENTS.MESSAGE.DELIVERED, handleMessageDelivered);
+    socket.on(SOCKET_EVENTS.MESSAGE.READ, handleMessageRead);
 
     return () => {
-      socket.off('message:new');
-      socket.off('message:delivered');
-      socket.off('message:read');
+      socket.off(SOCKET_EVENTS.MESSAGE.NEW, handleNewMessage);
+      socket.off(SOCKET_EVENTS.MESSAGE.DELIVERED, handleMessageDelivered);
+      socket.off(SOCKET_EVENTS.MESSAGE.READ, handleMessageRead);
     };
   }, [socket, channelId]);
 
@@ -44,12 +49,21 @@ export function useSocketMessages(channelId: string) {
       content,
       channelId,
       createdAt: new Date().toISOString(),
-      status: MessageEvent.SENT,
-      userId: socket.auth?.userId
+      updatedAt: new Date().toISOString(),
+      status: MessageDeliveryStatus.SENT,
+      userId: socket.auth?.userId,
+      user: {
+        id: socket.auth?.userId || '',
+        name: 'You'
+      },
+      reactions: [],
+      isRead: false,
+      isDelivered: false,
+      replyToId: null
     };
 
     setMessages(prev => [...prev, message]);
-    socket.emit('message:send', { channelId, content });
+    socket.emit(SOCKET_EVENTS.MESSAGE.SEND, { channelId, content });
   }, [socket, channelId]);
 
   return { messages, sendMessage };

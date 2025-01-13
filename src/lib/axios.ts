@@ -2,7 +2,7 @@
 
 import axios from 'axios';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 
 export const api = axios.create({
   baseURL: BASE_URL,
@@ -10,7 +10,7 @@ export const api = axios.create({
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   },
-  withCredentials: true, // Important for CORS
+  withCredentials: true,
 });
 
 let tokenGetter: (() => Promise<string | null>) | null = null;
