@@ -1,10 +1,10 @@
 import { useState, useCallback } from 'react';
-import { FileUploadState, ALLOWED_FILE_TYPES } from '@/types/file';
-import { uploadFile } from '@/api/files';
 import { useAuth } from '@clerk/nextjs';
+import { FileMetadata, FileUploadState, ALLOWED_FILE_TYPES } from '@/types/file';
+import { uploadFile } from '@/api/files';
 
 interface UseFileUploadOptions {
-  onSuccess?: (metadata: any) => void;
+  onSuccess?: (metadata: FileMetadata) => void;
   onError?: (error: Error) => void;
 }
 

@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
+import { useAuth } from '@clerk/nextjs';
 import { FileUploadState } from '@/types/file';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { cn } from '@/lib/utils';
@@ -15,9 +16,11 @@ export function FileUpload({
   onUploadError,
   className,
 }: FileUploadProps) {
+  const { getToken } = useAuth();
   const { state, handleFileSelect, startUpload, reset } = useFileUpload({
     onSuccess: onUploadComplete,
     onError: onUploadError,
+    getToken,
   });
 
   const onDrop = useCallback(

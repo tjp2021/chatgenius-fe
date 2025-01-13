@@ -1,8 +1,19 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useAuth } from '@clerk/nextjs';
 import { FileMetadata } from '@/types/file';
-import { searchFiles } from '@/api/files';
+import { getAllFiles } from '@/api/files';
 import { cn } from '@/lib/utils';
 import { useDebounce } from '@/hooks/use-debounce';
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
+import { Loader2 } from 'lucide-react';
 
 interface FileSearchProps {
   onFileSelect?: (file: FileMetadata) => void;
@@ -11,48 +22,41 @@ interface FileSearchProps {
 }
 
 export function FileSearch({ onFileSelect, renderFileActions, className }: FileSearchProps) {
+  const { getToken } = useAuth();
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [files, setFiles] = useState<FileMetadata[]>([]);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
+  const [total, setTotal] = useState(0);
 
   const debouncedQuery = useDebounce(query, 300);
 
-  const fetchFiles = useCallback(async (searchQuery: string, pageNum: number) => {
-    if (!searchQuery) {
-      setFiles([]);
-      setHasMore(false);
-      return;
-    }
-
+  const fetchFiles = useCallback(async (searchQuery: string) => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const result = await searchFiles(searchQuery, pageNum);
-      setFiles(prev => pageNum === 1 ? result.files : [...prev, ...result.files]);
-      setHasMore(result.files.length === result.limit);
+      const token = await getToken();
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
+      const result = await getAllFiles(token, {
+        filename: searchQuery || undefined
+      });
+      
+      setFiles(result.files);
+      setTotal(result.total);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to search files');
+      setError(err instanceof Error ? err.message : 'Failed to fetch files');
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [getToken]);
 
   useEffect(() => {
-    setPage(1);
-    fetchFiles(debouncedQuery, 1);
+    fetchFiles(debouncedQuery);
   }, [debouncedQuery, fetchFiles]);
-
-  const loadMore = useCallback(() => {
-    if (!isLoading && hasMore) {
-      const nextPage = page + 1;
-      setPage(nextPage);
-      fetchFiles(debouncedQuery, nextPage);
-    }
-  }, [isLoading, hasMore, page, debouncedQuery, fetchFiles]);
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
@@ -60,22 +64,35 @@ export function FileSearch({ onFileSelect, renderFileActions, className }: FileS
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
+  const formatDate = (date: Date | string | undefined) => {
+    if (!date) return 'N/A';
+    return new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   return (
-    <div className={cn('w-full max-w-xl mx-auto space-y-4', className)}>
-      <div className="relative">
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search files..."
-          className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          aria-label="Search files"
-        />
-        {isLoading && query && (
-          <div className="absolute right-3 top-2.5">
-            <div className="animate-spin rounded-full h-5 w-5 border-2 border-blue-500 border-t-transparent"></div>
-          </div>
-        )}
+    <div className={cn('w-full space-y-4', className)}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <Input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search files by name..."
+            className="max-w-sm"
+          />
+          {isLoading && (
+            <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+          )}
+        </div>
+        <div className="text-sm text-gray-500">
+          {total} file{total !== 1 ? 's' : ''} total
+        </div>
       </div>
 
       {error && (
@@ -84,56 +101,41 @@ export function FileSearch({ onFileSelect, renderFileActions, className }: FileS
         </div>
       )}
 
-      <div className="space-y-2">
-        {files.map((file) => (
-          <div
-            key={file.id}
-            className="w-full p-4 bg-white border rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <div className="flex justify-between items-center">
-              <button
-                onClick={() => onFileSelect?.(file)}
-                className="flex-1 text-left"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {file.name}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    {formatFileSize(file.size)}
-                  </p>
-                </div>
-                <div className="ml-4">
-                  <span className="text-xs text-gray-400">
-                    {new Date(file.createdAt!).toLocaleDateString()}
-                  </span>
-                </div>
-              </button>
-              {renderFileActions && (
-                <div className="ml-4 flex-shrink-0">
-                  {renderFileActions(file)}
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {hasMore && (
-        <button
-          onClick={loadMore}
-          disabled={isLoading}
-          className="w-full py-2 text-sm text-blue-600 hover:text-blue-700 disabled:text-gray-400"
-        >
-          {isLoading ? 'Loading...' : 'Load more'}
-        </button>
-      )}
-
-      {!isLoading && files.length === 0 && query && (
-        <div className="text-center text-gray-500 py-8">
-          No files found
-        </div>
-      )}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Size</TableHead>
+            <TableHead>Type</TableHead>
+            <TableHead>Uploaded</TableHead>
+            <TableHead>Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {files.map((file) => (
+            <TableRow
+              key={file.id}
+              className="cursor-pointer hover:bg-gray-50"
+              onClick={() => onFileSelect?.(file)}
+            >
+              <TableCell>{file.name}</TableCell>
+              <TableCell>{formatFileSize(file.size)}</TableCell>
+              <TableCell>{file.type}</TableCell>
+              <TableCell>{formatDate(file.createdAt)}</TableCell>
+              <TableCell>
+                {renderFileActions?.(file)}
+              </TableCell>
+            </TableRow>
+          ))}
+          {files.length === 0 && !isLoading && (
+            <TableRow>
+              <TableCell colSpan={5} className="text-center py-8 text-gray-500">
+                No files found
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
     </div>
   );
 } 

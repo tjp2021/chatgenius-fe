@@ -2,6 +2,43 @@ import { FileMetadata, FileSearchResult } from '@/types/file';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
+interface FileSearchParams {
+  filename?: string;
+  type?: string;
+}
+
+export async function getAllFiles(
+  token: string,
+  params?: FileSearchParams
+): Promise<FileSearchResult> {
+  const queryParams = new URLSearchParams();
+  
+  if (params?.filename) queryParams.set('filename', params.filename);
+  if (params?.type) queryParams.set('type', params.type);
+
+  const url = `${API_BASE_URL}/files${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Failed to fetch files');
+  }
+
+  const result = await response.json();
+  return {
+    files: result.items,
+    total: result.total,
+    page: 1,
+    limit: result.items.length
+  };
+}
+
 export async function uploadFile(
   file: File,
   token: string,
@@ -22,36 +59,6 @@ export async function uploadFile(
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.message || 'Failed to upload file');
-  }
-
-  return response.json();
-}
-
-export async function searchFiles(
-  query: string,
-  token: string,
-  page: number = 1,
-  limit: number = 10
-): Promise<FileSearchResult> {
-  const params = new URLSearchParams({
-    query,
-    page: page.toString(),
-    limit: limit.toString(),
-  });
-
-  const response = await fetch(
-    `${API_BASE_URL}/files/search?${params.toString()}`,
-    {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-      credentials: 'include',
-    }
-  );
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to search files');
   }
 
   return response.json();
