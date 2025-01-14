@@ -247,6 +247,7 @@ export class ChatSocketClient {
       });
 
       this.socket.on("connect_error", (error: Error) => {
+        const auth = this.socket?.auth as { token?: string; userId?: string } | undefined;
         console.error('[Socket][Debug] Connection error:', {
           error: error.message,
           name: error.name,
@@ -254,9 +255,9 @@ export class ChatSocketClient {
           state: this.connectionState,
           transport: this.socket?.io?.engine?.transport?.name,
           auth: {
-            hasToken: !!this.socket?.auth?.token,
-            tokenPrefix: this.socket?.auth?.token?.substring(0, 10),
-            userId: this.socket?.auth?.userId
+            hasToken: !!auth?.token,
+            tokenPrefix: auth?.token?.substring(0, 10),
+            userId: auth?.userId
           }
         });
       });
