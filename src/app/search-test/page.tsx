@@ -2,24 +2,28 @@
 
 import { useState } from 'react';
 import { SearchInput } from '@/components/search/search-input';
+import { SearchResults } from '@/components/search/search-results';
 import { useSocket } from '@/providers/socket-provider';
 import { cn } from '@/lib/utils';
-import { searchMessages, SearchResponse } from '@/api/search';
+import { searchMessages, SearchResponse, SearchResult } from '@/api/search';
 
 export default function SearchTestPage() {
   const { isConnected } = useSocket();
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [results, setResults] = useState<SearchResult[]>([]);
   
   const handleSearch = async (query: string) => {
     try {
       setIsSearching(true);
       setError(null);
-      const results = await searchMessages(query);
-      console.log('Search results:', results);
+      const response = await searchMessages(query);
+      setResults(response.results);
+      console.log('Search results:', response);
     } catch (err) {
       console.error('Search failed:', err);
       setError('Search failed. Please try again.');
+      setResults([]);
     } finally {
       setIsSearching(false);
     }
@@ -45,22 +49,17 @@ export default function SearchTestPage() {
         placeholder="Type to search..."
       />
       
-      {isSearching && (
-        <p className="mt-4 text-sm text-muted-foreground animate-pulse">
-          Searching...
-        </p>
-      )}
-      
-      {error && (
+      {error ? (
         <p className="mt-4 text-sm text-red-500">
           {error}
         </p>
-      )}
-      
-      {!isSearching && !error && (
-        <p className="mt-4 text-sm text-muted-foreground">
-          Check console for search results
-        </p>
+      ) : (
+        <div className="mt-6">
+          <SearchResults 
+            results={results}
+            isLoading={isSearching}
+          />
+        </div>
       )}
     </div>
   );

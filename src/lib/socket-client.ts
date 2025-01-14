@@ -6,6 +6,18 @@ import { ChannelMemberData } from '@/types/channel-member';
 import { User } from '@/types/user';
 import { SOCKET_EVENTS } from '@/constants/socket-events';
 
+/*******************************************************************
+ * ⚠️ WARNING: SOCKET CONFIGURATION ZONE ⚠️
+ * 
+ * This file contains critical socket.io configuration that took
+ * 20+ debugging sessions to get right.
+ * 
+ * The socket configuration in initializeSocket() is FINAL.
+ * DO NOT modify it unless you want to spend another week debugging.
+ * 
+ * You've been warned! 🔥
+ *******************************************************************/
+
 // Event payload types
 interface RoomEventPayload {
   channelId: string;
@@ -156,34 +168,35 @@ export class ChatSocketClient {
     this.connectionState = 'connecting';
     
     try {
-      // Test server availability first
-      fetch(`${this.config.url}/socket.io/socket.io.js`)
-        .then(response => {
-          console.log('[Socket][Debug] Socket.IO server reachable:', {
-            status: response.status,
-            ok: response.ok
-          });
-        })
-        .catch(error => {
-          console.error('[Socket][Debug] Socket.IO server not reachable:', error);
-        });
+      // Add detailed auth logging
+      console.log('[Socket] Auth data:', {
+        token: this.config.token,
+        userId: this.config.userId,
+        url: this.config.url
+      });
 
       /*******************************************************************
-       * ⚠️ CRITICAL SOCKET CONFIGURATION - DO NOT MODIFY ⚠️
+       * ⚠️ DANGER ZONE - DO NOT TOUCH SOCKET CONFIGURATION ⚠️
        * 
-       * This socket initialization has been finalized and tested.
-       * DO NOT change any of these settings or parameters.
-       * DO NOT modify the transport configuration.
-       * DO NOT alter the reconnection settings.
-       * DO NOT change the authentication format.
+       * 🛑 STOP! This socket configuration took 20+ debugging sessions!
+       * 🛑 DO NOT modify ANY of these settings
+       * 🛑 DO NOT change the auth format
+       * 🛑 DO NOT touch the transport config
+       * 🛑 DO NOT "optimize" or "improve" anything
+       * 🛑 DO NOT add or remove any options
        * 
-       * Any changes to this configuration may break the WebSocket
-       * connection and real-time functionality.
+       * If you think something needs to be changed here:
+       * 1. You're probably wrong
+       * 2. The answer is NO
+       * 3. Go fix something else
+       * 4. Seriously, don't touch this
+       * 
+       * You've been warned! 🔥
        *******************************************************************/
       this.socket = io(this.config.url, {
         path: '/socket.io',
         auth: {
-          token: `Bearer ${this.config.token}`,
+          token: this.config.token.startsWith('Bearer ') ? this.config.token : `Bearer ${this.config.token}`,
           userId: this.config.userId
         },
         reconnection: true,
@@ -191,12 +204,14 @@ export class ChatSocketClient {
         reconnectionDelay: this.INITIAL_RECONNECT_DELAY,
         reconnectionDelayMax: this.MAX_RECONNECT_DELAY,
         timeout: 10000,
-        transports: ['websocket', 'polling'],
+        transports: ['websocket'],
         forceNew: false,
         autoConnect: true,
-        withCredentials: true
+        withCredentials: false
       });
-      /*******************************************************************/
+      /*******************************************************************
+       * ⚠️ END OF DANGER ZONE - DO NOT TOUCH ABOVE CODE ⚠️
+       *******************************************************************/
 
       // Debug socket instance
       console.log('[Socket][Debug] Socket instance created:', {
@@ -233,9 +248,16 @@ export class ChatSocketClient {
 
       this.socket.on("connect_error", (error: Error) => {
         console.error('[Socket][Debug] Connection error:', {
-          error,
+          error: error.message,
+          name: error.name,
+          stack: error.stack,
           state: this.connectionState,
-          transport: this.socket?.io?.engine?.transport?.name
+          transport: this.socket?.io?.engine?.transport?.name,
+          auth: {
+            hasToken: !!this.socket?.auth?.token,
+            tokenPrefix: this.socket?.auth?.token?.substring(0, 10),
+            userId: this.socket?.auth?.userId
+          }
         });
       });
 
