@@ -31,7 +31,7 @@ export const addReply = async (threadId: string, content: string): Promise<Threa
 export const listChannelThreads = async (
   channelId: string, 
   cursor?: string, 
-  limit: number = 20
+  limit = 20
 ): Promise<ThreadListResponse> => {
   throw new Error('Not implemented');
 };

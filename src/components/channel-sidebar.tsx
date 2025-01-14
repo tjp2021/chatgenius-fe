@@ -15,6 +15,7 @@ import { CreateChannelModal } from './modals/create-channel-modal';
 import { CreateDMModal } from './modals/create-dm-modal';
 
 export function ChannelSidebar() {
+  const noop = () => void 0;
   const [channelToLeave, setChannelToLeave] = useState<Channel | null>(null);
   const { channels, isLoading: isLoadingChannels, leaveChannel, selectedChannel, setSelectedChannel } = useChannelContext();
   const { isConnected } = useSocket();
@@ -145,7 +146,7 @@ export function ChannelSidebar() {
               onlineUsers={{}}
               selectedChannel={selectedChannel}
               onChannelSelect={handleChannelSelect}
-              onJoinChannel={(channelId) => {}}
+              onJoinChannel={noop}
               onLeaveChannel={handleSetChannelToLeave}
             />
             
@@ -159,7 +160,7 @@ export function ChannelSidebar() {
               onlineUsers={{}}
               selectedChannel={selectedChannel}
               onChannelSelect={handleChannelSelect}
-              onJoinChannel={(channelId) => {}}
+              onJoinChannel={noop}
               onLeaveChannel={handleSetChannelToLeave}
             />
             
@@ -173,7 +174,7 @@ export function ChannelSidebar() {
               onlineUsers={{}}
               selectedChannel={selectedChannel}
               onChannelSelect={handleChannelSelect}
-              onJoinChannel={(channelId) => {}}
+              onJoinChannel={noop}
               onLeaveChannel={handleSetChannelToLeave}
             />
           </>

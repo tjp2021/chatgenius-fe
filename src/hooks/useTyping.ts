@@ -63,12 +63,11 @@ export function useTyping(channelId: string) {
     const debouncedFn = () => {
       if (!socket?.connected) return;
 
-      const auth = socket.auth as { userId: string; username: string };
+      const { userId } = socket.auth;
       socket.emit(MessageEvent.TYPING_START, {
         channelId,
-        userId: auth.userId,
-        username: auth.username,
-        timestamp: Date.now()
+        userId,
+        username: userId
       });
     };
 

@@ -144,7 +144,7 @@ export function ChatLayout() {
                   <h3 className="text-lg font-medium mb-2">Getting Started</h3>
                   <ol className="list-decimal list-inside space-y-2 text-gray-600">
                     <li>Start by browsing public channels to find conversations that interest you</li>
-                    <li>Join channels by clicking the "Join Channel" button</li>
+                    <li>Join channels by clicking the &quot;Join Channel&quot; button</li>
                   </ol>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-4 flex-1">

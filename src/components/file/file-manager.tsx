@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useAuth } from '@clerk/nextjs';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { FileUpload } from './file-upload';
 import { FileSearch } from './file-search';
@@ -24,6 +25,7 @@ interface FileManagerProps {
 }
 
 export function FileManager({ onFileSelect, className }: FileManagerProps) {
+  const { getToken } = useAuth();
   const [selectedFile, setSelectedFile] = useState<FileMetadata | null>(null);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -50,7 +52,11 @@ export function FileManager({ onFileSelect, className }: FileManagerProps) {
 
     setIsLoading(true);
     try {
-      const updatedFile = await renameFile(selectedFile.id!, newFileName.trim());
+      const token = await getToken();
+      if (!token) {
+        throw new Error('No authentication token available');
+      }
+      const updatedFile = await renameFile(selectedFile.id!, newFileName.trim(), token);
       toast({
         title: 'File renamed',
         description: `File has been renamed to ${updatedFile.name}`,
@@ -73,7 +79,11 @@ export function FileManager({ onFileSelect, className }: FileManagerProps) {
 
     setIsLoading(true);
     try {
-      await deleteFile(selectedFile.id!);
+      const token = await getToken();
+      if (!token) {
+        throw new Error('No authentication token available');
+      }
+      await deleteFile(selectedFile.id!, token);
       toast({
         title: 'File deleted',
         description: `${selectedFile.name} has been deleted.`,
@@ -185,7 +195,7 @@ export function FileManager({ onFileSelect, className }: FileManagerProps) {
             <DialogTitle>Delete File</DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            Are you sure you want to delete "{selectedFile?.name}"? This action cannot be undone.
+            Are you sure you want to delete &quot;{selectedFile?.name}&quot;? This action cannot be undone.
           </div>
           <DialogFooter>
             <Button

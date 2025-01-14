@@ -37,11 +37,12 @@ export const useThreadStore = create<ThreadStore>((set, get) => ({
     // Get current state
     const currentState = get();
     const currentThread = currentState.activeThread;
+    const threadWithReplies = thread as ThreadStore['activeThread'];
 
     // If it's the same thread, preserve existing replies and merge with new ones
     if (currentThread && currentThread.id === thread.id) {
       const existingReplies = currentThread.replies || [];
-      const newReplies = thread.replies || [];
+      const newReplies = threadWithReplies?.replies || [];
 
       // Create a Map to deduplicate replies by ID
       const repliesMap = new Map();
@@ -65,8 +66,8 @@ export const useThreadStore = create<ThreadStore>((set, get) => ({
       set({
         activeThread: {
           ...thread,
-          parentMessage: thread.parentMessage,
-          replies: thread.replies || []
+          parentMessage: threadWithReplies?.parentMessage,
+          replies: threadWithReplies?.replies || []
         }
       });
     }

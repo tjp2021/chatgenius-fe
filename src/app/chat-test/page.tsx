@@ -115,7 +115,7 @@ export default function ChatTestPage() {
     
     try {
       const tempId = Date.now().toString();
-      const response = await socket.sendMessage<Message>(channelId, content, tempId);
+      const response = await socket.sendMessage(channelId, content, tempId);
       if (response.success && response.data) {
         toast({
           title: 'Message Sent',
@@ -156,10 +156,12 @@ export default function ChatTestPage() {
         updatedAt: rawMessage.updatedAt || rawMessage.timestamp || new Date().toISOString(),
         isRead: false,
         isDelivered: false,
-        sender: {
+        user: {
           id: rawMessage.senderId || rawMessage.userId,
           name: rawMessage.sender?.name || `User ${(rawMessage.senderId || rawMessage.userId || '').split('_')[1]?.slice(0, 8)}`,
-        }
+        },
+        reactions: [],
+        replyToId: null
       };
 
       setMessages(prev => [...prev, message]);
@@ -247,7 +249,7 @@ export default function ChatTestPage() {
         <h2 className="font-semibold mb-2">Messages</h2>
         <div className="h-[400px] overflow-y-auto border rounded p-4 mb-2 space-y-4 bg-muted/30">
           {messages.map((msg) => {
-            const isCurrentUser = msg.sender?.id !== msg.userId;
+            const isCurrentUser = msg.user?.id !== msg.userId;
             return (
               <div 
                 key={msg.id || Date.now()} 
@@ -255,7 +257,7 @@ export default function ChatTestPage() {
               >
                 <div className={`flex items-center gap-2 mb-1 ${isCurrentUser ? 'flex-row-reverse' : 'flex-row'}`}>
                   <span className="text-sm font-medium text-muted-foreground">
-                    {msg.sender?.name || 'Unknown User'}
+                    {msg.user?.name || 'Unknown User'}
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {new Date(msg.createdAt).toLocaleTimeString()}
@@ -266,56 +268,14 @@ export default function ChatTestPage() {
                     isCurrentUser
                       ? 'bg-primary text-primary-foreground mr-0 ml-8' 
                       : 'bg-accent text-accent-foreground ml-0 mr-8'
-                  }`}
-                >
+                  }`}>
                   <p className="whitespace-pre-wrap break-words">{msg.content}</p>
                 </div>
-                {isCurrentUser && (
-                  <span className="text-xs text-muted-foreground mt-1">
-                    {msg.isDelivered ? '✓✓ Delivered' : '✓ Sent'}
-                  </span>
-                )}
               </div>
             );
           })}
-          {messages.length === 0 && (
-            <div className="h-full flex items-center justify-center text-muted-foreground">
-              No messages yet
-            </div>
-          )}
         </div>
-        <div className="flex gap-2">
-          <Input
-            value={messageInput}
-            onChange={(e) => setMessageInput(e.target.value)}
-            placeholder="Type a message..."
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-            disabled={!isConnected || !hasJoined}
-            className="min-h-[44px]"
-          />
-          <Button 
-            onClick={handleSendMessage}
-            disabled={!isConnected || !hasJoined}
-            size="icon"
-            className="h-[44px] w-[44px]"
-          >
-            <Send className="h-5 w-5" />
-          </Button>
-        </div>
-      </Card>
-
-      {/* Debug Info */}
-      <Card className="p-4">
-        <h2 className="font-semibold mb-2">Debug Info</h2>
-        <pre className="text-xs bg-accent p-2 rounded">
-          {JSON.stringify({
-            connected: isConnected,
-            channelId,
-            hasJoined,
-            messageCount: messages.length
-          }, null, 2)}
-        </pre>
       </Card>
     </div>
   );
-} 
+}

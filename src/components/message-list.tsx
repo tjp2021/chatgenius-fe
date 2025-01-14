@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useMessages } from '@/hooks/use-messages';
+import { useMessages } from '@/hooks/useMessages';
 import { MessageInput } from './message-input';
 import { MessageItem } from './message-item';
 import { TypingIndicatorDisplay } from './typing-indicator';
@@ -11,7 +11,7 @@ interface MessageListProps {
 }
 
 export const MessageList = ({ channelId }: MessageListProps) => {
-  const { messages, isLoading, sendMessage, retryMessage } = useMessages(channelId);
+  const { messages, isLoading, sendMessage } = useMessages(channelId);
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
@@ -64,7 +64,6 @@ export const MessageList = ({ channelId }: MessageListProps) => {
           <MessageItem 
             key={message.tempId || message.id} 
             message={message}
-            onRetry={retryMessage}
           />
         ))}
         <div ref={bottomRef} />

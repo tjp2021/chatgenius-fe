@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/nextjs';
 import { useUser } from '@clerk/nextjs';
 import { threadApi } from '@/lib/api/threads';
 import { useThreadStore } from './use-thread-store';
+import { Thread, ThreadReply } from '@/types/thread';
 import { setAuthToken } from '@/lib/axios';
 
 export const useThread = () => {
@@ -66,20 +67,19 @@ export const useThread = () => {
       const replies = await loadReplies(thread.id);
       
       // Set active thread with parent message, replies and ensure content is set
-      setActiveThread({ 
+      setActiveThread({
         ...threadWithUser,
-        parentMessage: {
-          id: messageId,
-          content: parentMessage?.content || threadWithUser.content || 'Message content not available',
-          createdAt: parentMessage?.createdAt || threadWithUser.createdAt,
-          user: parentMessage?.user || threadWithUser.user || {
+        parentMessage: parentMessage || {
+          content: threadWithUser.content,
+          createdAt: threadWithUser.createdAt,
+          user: threadWithUser.user || {
             id: userId || '',
             name: user?.fullName || user?.username || 'Unknown User',
             imageUrl: user?.imageUrl
           }
         },
         replies,
-      });
+      } as Thread & { replies: ThreadReply[] });
 
       return threadWithUser;
     } catch (error) {

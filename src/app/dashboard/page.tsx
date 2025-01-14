@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { ProtectedComponent } from '@/components/ProtectedComponent';
 import { UserButton } from '@clerk/nextjs';
 

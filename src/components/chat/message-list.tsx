@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useMessages } from '@/hooks/use-messages';
+import { useMessages } from '@/hooks/useMessages';
 import { MessageItem } from './message-item';
 import { Loader2 } from 'lucide-react';
 
@@ -11,7 +11,7 @@ interface MessageListProps {
 
 export function MessageList({ channelId }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { messages, isLoading, error } = useMessages(channelId);
+  const { messages, isLoading, sendMessage } = useMessages(channelId);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -21,14 +21,6 @@ export function MessageList({ channelId }: MessageListProps) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <Loader2 className="h-7 w-7 text-muted-foreground animate-spin" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <p className="text-destructive">Failed to load messages</p>
       </div>
     );
   }
