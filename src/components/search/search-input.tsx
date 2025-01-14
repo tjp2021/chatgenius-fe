@@ -20,8 +20,9 @@ export function SearchInput({
 
   // Effect to handle debounced search
   useEffect(() => {
-    if (debouncedSearch.trim()) {
-      onSearch(debouncedSearch);
+    const trimmedSearch = debouncedSearch.trim();
+    if (trimmedSearch && trimmedSearch.length >= 2) {  // Only search if 2+ characters
+      onSearch(trimmedSearch);
     }
   }, [debouncedSearch, onSearch]);
 

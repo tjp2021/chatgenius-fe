@@ -12,16 +12,20 @@ export default function SearchTestPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [lastQuery, setLastQuery] = useState<string>('');
   
   const handleSearch = async (query: string) => {
+    if (query === lastQuery || isSearching) {
+      return;
+    }
+
     try {
       setIsSearching(true);
       setError(null);
+      setLastQuery(query);
       const response = await searchMessages(query);
       setResults(response.results);
-      console.log('Search results:', response);
     } catch (err) {
-      console.error('Search failed:', err);
       setError('Search failed. Please try again.');
       setResults([]);
     } finally {
