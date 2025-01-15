@@ -5,6 +5,7 @@ import { Channel, ChannelType } from '@/types/channel';
 import { useAuth } from '@clerk/nextjs';
 import React from 'react';
 import { useSocket } from '@/providers/socket-provider';
+import { api } from '@/lib/axios';
 
 interface ChannelContextType {
   channels: Channel[];
@@ -22,36 +23,32 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
-  const { getToken } = useAuth();
+  const { getToken, isSignedIn, isLoaded } = useAuth();
   const { socket } = useSocket();
 
   const fetchChannels = async () => {
+    if (!isLoaded || !isSignedIn) {
+      console.log('[ChannelContext] Not ready:', { isLoaded, isSignedIn });
+      setIsLoading(false);
+      return;
+    }
+
     try {
+      // Try to get a token first to ensure auth is ready
       const token = await getToken();
-      if (!token) return;
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels?view=sidebar`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[ChannelContext] Failed to fetch channels:', {
-          status: response.status,
-          statusText: response.statusText,
-          responseText: errorText
-        });
-        throw new Error('Failed to fetch channels');
+      if (!token) {
+        console.log('[ChannelContext] No token yet, skipping fetch');
+        return;
       }
 
-      const data = await response.json();
-      console.log('[ChannelContext] Got channels:', data);
-      // The API returns an array directly, not wrapped in a channels property
-      setChannels(Array.isArray(data) ? data : []);
+      console.log('[ChannelContext] Fetching channels...');
+      const response = await api.get('/channels?view=sidebar');
+      console.log('[ChannelContext] Got channels:', response.data);
+      setChannels(response.data);
     } catch (error) {
-      console.error('[ChannelContext] Error fetching channels:', error);
+      console.error('[ChannelContext] Failed to fetch channels:', error);
+      // Don't throw error on landing page
+      setChannels([]);
     } finally {
       setIsLoading(false);
     }
@@ -59,7 +56,7 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     fetchChannels();
-  }, [getToken]);
+  }, [isLoaded, isSignedIn, getToken]);
 
   const refreshChannels = async () => {
     await fetchChannels();
@@ -68,32 +65,15 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
   const leaveChannel = async (channelId: string) => {
     try {
       console.log('[ChannelContext] Leaving channel:', channelId);
-      const token = await getToken();
-      if (!token) throw new Error('No auth token available');
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels/${channelId}/leave`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        console.error('[ChannelContext] Leave channel error:', errorData);
-        throw new Error(errorData?.message || 'Failed to leave channel');
-      }
-
-      const data = await response.json();
-      console.log('[ChannelContext] Leave channel response:', data);
+      const response = await api.delete(`/channels/${channelId}/leave`);
+      console.log('[ChannelContext] Leave channel response:', response.data);
       
       // Emit socket event
       if (socket && socket.connected) {
         socket.emit('channel:leave', { channelId });
       }
       
-      if (data.wasDeleted) {
+      if (response.data.wasDeleted) {
         setChannels(prev => prev.filter(channel => channel.id !== channelId));
       }
       
@@ -110,19 +90,8 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
 
   const joinChannel = async (channelId: string) => {
     try {
-      const token = await getToken();
-      if (!token) throw new Error('No auth token available');
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels/${channelId}/join`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) throw new Error('Failed to join channel');
-
-      const { channel } = await response.json();
+      const response = await api.post(`/channels/${channelId}/join`);
+      const { channel } = response.data;
       
       setChannels(prev => {
         const filtered = prev.filter(c => c.id !== channelId);

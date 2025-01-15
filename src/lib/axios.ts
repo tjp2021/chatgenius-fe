@@ -1,48 +1,36 @@
 'use client';
 
-import axios from 'axios';
+import axios, { InternalAxiosRequestConfig } from 'axios';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 
+// Create bare minimum axios instance
 export const api = axios.create({
   baseURL: BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-  },
   withCredentials: true,
+  headers: {
+    'Content-Type': 'application/json'
+  }
 });
 
 let tokenGetter: (() => Promise<string | null>) | null = null;
 
 export const setAuthToken = (getter: () => Promise<string | null>) => {
   tokenGetter = getter;
-};
+  
+  api.interceptors.request.use(
+    async (config: InternalAxiosRequestConfig) => {
+      if (!tokenGetter) {
+        throw new Error('No auth token getter available');
+      }
 
-// Add request interceptor to add auth token
-api.interceptors.request.use(
-  async (config) => {
-    if (tokenGetter) {
       const token = await tokenGetter();
       if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+        // Just send the raw token, no Bearer prefix
+        config.headers.Authorization = token;
       }
+      
+      return config;
     }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
-// Add response interceptor to handle errors
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Handle unauthorized error
-      console.error('Unauthorized request:', error);
-    }
-    return Promise.reject(error);
-  }
-);
+  );
+};

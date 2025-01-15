@@ -1,25 +1,30 @@
-import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@clerk/nextjs';
 import { api } from '@/lib/axios';
+import { User } from '@/types/user';
 
-interface User {
-  id: string;
-  name: string;
-  imageUrl?: string;
-}
+export const useUsers = () => {
+  const { getToken, isLoaded, isSignedIn } = useAuth();
 
-export function useUsers() {
-  const { data: users = {} } = useQuery({
-    queryKey: ['users'],
-    queryFn: async () => {
+  const fetchUsers = async () => {
+    if (!isLoaded || !isSignedIn) {
+      console.log('[Users] Not ready:', { isLoaded, isSignedIn });
+      return [];
+    }
+
+    const token = await getToken();
+    if (!token) {
+      console.log('[Users] No token yet');
+      return [];
+    }
+
+    try {
       const response = await api.get<User[]>('/users');
-      // Convert array to Record<string, string> for name lookup
-      return response.data.reduce((acc, user) => ({
-        ...acc,
-        [user.id]: user.name
-      }), {} as Record<string, string>);
-    },
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
-  });
+      return response.data;
+    } catch (error) {
+      console.error('[Users] Error fetching users:', error);
+      return [];
+    }
+  };
 
-  return { users };
-} 
+  return { fetchUsers };
+}; 

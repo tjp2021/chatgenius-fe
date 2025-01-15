@@ -202,3 +202,77 @@ Relevant Files:
 - src/providers/auth-provider.tsx
 
 ================================================================== 
+
+Context Window:
+
+Prompt: Next.js Authentication Debugging - HTTP vs WebSocket Auth Discrepancy
+
+Problem Analysis [CG-20250115-1]
+- **Issue Description**: HTTP requests failing with 401 while WebSocket connections worked
+- **Symptoms**: 
+  - WebSocket auth successful with token
+  - HTTP requests failing with 401 Unauthorized
+  - Inconsistent auth behavior between protocols
+- **Impact**: Unable to fetch channels and other API data
+- **Initial Investigation**: 
+  - Compared WebSocket vs HTTP headers
+  - Analyzed auth token flow
+  - Reviewed timing of requests
+
+Solution Attempts [CG-20250115-1]
+- **Attempt 1**: Add Content-Type header
+  - Implementation: Added 'Content-Type': 'application/json' to axios config
+  - Result: Still 401 errors
+  - Learnings: Headers weren't the core issue
+
+- **Attempt 2**: Match socket token format
+  - Implementation: Added Bearer prefix to match socket
+  - Result: Still failing
+  - Learnings: Token format wasn't the issue
+
+- **Attempt 3**: Add token to both auth object and headers
+  - Implementation: Sent token in both config.auth and headers
+  - Result: Still 401 errors
+  - Learnings: Location of token wasn't the issue
+
+Final Solution [CG-20250115-1]
+- **Solution Description**: Added token readiness check before API calls
+- **Implementation Details**:
+```typescript
+const fetchChannels = async () => {
+  // Check auth state first
+  if (!isLoaded || !isSignedIn) return;
+  
+  // Verify token exists before making request
+  const token = await getToken();
+  if (!token) return;
+  
+  // Make API call only when token is ready
+  const response = await api.get('/channels?view=sidebar');
+}
+```
+- **Component Updates**: Modified ChannelContext to wait for token
+- **Side Effects**: None, clean solution
+
+Lessons Learned [CG-20250115-1]
+- **Technical Insights**: 
+  1. Auth timing is critical in Next.js apps
+  2. Token availability ≠ token readiness
+  3. WebSocket guards can be more flexible than HTTP guards
+
+- **Prevention Strategies**:
+  1. Always verify token before API calls
+  2. Add explicit token readiness checks
+  3. Use debug logs to track auth state
+
+- **Best Practices**:
+  1. KISS principle - simpler auth is better
+  2. Check auth prerequisites before requests
+  3. Clear logging for auth state changes
+
+Relevant Files:
+- src/contexts/channel-context.tsx
+- src/providers/auth-provider.tsx
+- src/lib/axios.ts
+
+================================================================== 
