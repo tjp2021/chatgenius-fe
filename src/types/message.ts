@@ -38,6 +38,7 @@ export interface Message {
   isRead: boolean;
   isDelivered: boolean;
   replyToId: string | null;
+  hasReplies: boolean;
   hasThread?: boolean;
   threadParticipantCount?: number;
   status?: MessageDeliveryStatus;

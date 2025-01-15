@@ -439,7 +439,9 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
                   <button
                     className={cn(
                       "p-1.5 rounded-full hover:bg-gray-100 transition-colors",
-                      (isThreadLoading || activeThread?.id === message.id) && "text-blue-500"
+                      (message.hasReplies || isThreadLoading || activeThread?.id === message.id) 
+                        ? "text-blue-500" 
+                        : "text-muted-foreground"
                     )}
                     onClick={async () => {
                       try {
