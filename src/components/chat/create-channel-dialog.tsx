@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { ChannelType } from '@/types/channel';
-import { useApi } from '@/hooks/useApi';
+import { api } from '@/lib/axios';
 import {
   Dialog,
   DialogContent,
@@ -49,7 +49,6 @@ export function CreateChannelDialog({
   onOpenChange,
 }: CreateChannelDialogProps) {
   const router = useRouter();
-  const { createChannel } = useApi();
   const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<FormData>({
@@ -63,10 +62,15 @@ export function CreateChannelDialog({
   const onSubmit = async (data: FormData) => {
     try {
       setIsLoading(true);
-      const channel = await createChannel({
+      
+      // CORRECT AUTH PATTERN: Use configured api client for authenticated requests
+      // This ensures proper token handling and error management
+      const response = await api.post('/channels', {
         ...data,
         type: defaultType,
       });
+      const channel = response.data;
+      
       form.reset();
       onOpenChange?.(false);
       router.push(`/channels/${channel.id}`);

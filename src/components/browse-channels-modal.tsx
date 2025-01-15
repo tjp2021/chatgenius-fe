@@ -11,6 +11,7 @@ import { Loader2 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { Channel, ChannelType } from '@/types/channel';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from '@/lib/axios';
 
 interface BrowseChannelsModalProps {
   isOpen: boolean;
@@ -30,21 +31,14 @@ export function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsModalProp
     queryKey: ['channels', 'browse', isOpen],
     queryFn: async () => {
       console.log('[BrowseChannels] Query running, modal open:', isOpen);
-      const token = await getToken();
-      if (!token) throw new Error('No authentication token available');
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels?view=browse`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
       
-      if (!response.ok) throw new Error('Failed to fetch channels');
-      const data = await response.json();
-      console.log('[BrowseChannels] Got data:', data);
-      return data;
+      // CORRECT AUTH PATTERN: Use configured api client for authenticated requests
+      // This ensures proper token handling and error management
+      const response = await api.get('/channels?view=browse');
+      console.log('[BrowseChannels] Got data:', response.data);
+      return response.data;
     },
+    // CORRECT AUTH PATTERN: Only enable query when user is authenticated
     enabled: isOpen && !!userId,
     refetchOnMount: true
   });
@@ -62,20 +56,15 @@ export function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsModalProp
   const { data: joinedChannels = [], isLoading: isLoadingJoined } = useQuery({
     queryKey: ['channels-joined', isOpen],
     queryFn: async () => {
-      const token = await getToken();
-      if (!token) throw new Error('No authentication token available');
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels?view=leave`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (!response.ok) throw new Error('Failed to fetch joined channels');
-      return response.json();
+      console.log('[BrowseChannels] Fetching joined channels...');
+      // CORRECT AUTH PATTERN: Use configured api client for authenticated requests
+      // This ensures proper token handling and error management
+      const response = await api.get('/channels?view=leave');
+      console.log('[BrowseChannels] Got joined channels:', response.data);
+      return response.data;
     },
-    enabled: isOpen
+    // CORRECT AUTH PATTERN: Only enable query when user is authenticated
+    enabled: isOpen && !!userId
   });
 
   const handleJoinChannel = async (channelId: string) => {

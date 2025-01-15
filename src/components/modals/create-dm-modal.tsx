@@ -5,11 +5,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useChannelContext } from '@/contexts/channel-context';
 import { Search, UserPlus } from 'lucide-react';
-import { useAuth } from '@clerk/nextjs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
+import { api } from '@/lib/axios';
 
 interface User {
   id: string;
@@ -30,7 +30,6 @@ export function CreateDMModal({ isOpen, onClose }: CreateDMModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const { refreshChannels } = useChannelContext();
-  const { getToken } = useAuth();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Add cleanup for timeout
@@ -51,38 +50,16 @@ export function CreateDMModal({ isOpen, onClose }: CreateDMModalProps) {
 
     setIsLoading(true);
     try {
-      const token = await getToken();
-      if (!token) {
-        throw new Error('No authentication token available');
-      }
-
-      const searchUrl = `${process.env.NEXT_PUBLIC_API_URL}/users/search?query=${encodeURIComponent(query)}`;
-      console.log('Making search request to:', searchUrl);
+      const response = await api.get(`/users/search?query=${encodeURIComponent(query)}`);
+      const users = response.data;
       
-      const response = await fetch(searchUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        console.error('Search error:', errorData);
-        throw new Error(errorData?.message || 'Failed to search users');
-      }
-
-      const data = await response.json();
-      console.log('Search response:', data);
-      
-      if (!data.users || !Array.isArray(data.users)) {
-        console.error('Invalid response format:', data);
+      if (!Array.isArray(users)) {
         throw new Error('Invalid response format from server');
       }
       
-      setUsers(data.users.filter((user: { id?: string; name?: string }) => user.id && user.name));
+      setUsers(users.filter((user: { id?: string; name?: string }) => 
+        user.id && user.name
+      ));
     } catch (error) {
       console.error('Error searching users:', error);
       toast({
@@ -124,27 +101,13 @@ export function CreateDMModal({ isOpen, onClose }: CreateDMModalProps) {
     if (!selectedUser) return;
 
     try {
-      const token = await getToken();
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          type: 'DM',
-          targetUserId: selectedUser.id,
-          name: `DM-${selectedUser.name}`.slice(0, 50)
-        }),
+      const response = await api.post('/channels', {
+        type: 'DM',
+        targetUserId: selectedUser.id,
+        name: `DM-${selectedUser.name}`.slice(0, 50)
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        console.error('DM creation error:', errorData);
-        throw new Error(errorData?.message || 'Failed to create DM');
-      }
-
-      const data = await response.json();
+      const data = response.data;
       console.log('DM creation response:', data);
 
       await refreshChannels();

@@ -5,16 +5,7 @@ export const threadApi = {
   // Create a new thread
   createThread: async (messageId: string): Promise<Thread> => {
     try {
-      const response = await api.post<Thread>('/threads', {
-        messageId,
-        includeParentMessage: true
-      });
-      
-      // Only log if we're missing critical thread data
-      if (!response.data.id) {
-        console.error('Thread creation failed: Invalid response data');
-      }
-      
+      const response = await api.post<Thread>(`/messages/${messageId}/threads`);
       return response.data;
     } catch (error) {
       console.error('Error creating thread:', error);

@@ -1,19 +1,13 @@
 import { useCallback } from 'react';
-import { useAuth } from '@clerk/nextjs';
 import { useUser } from '@clerk/nextjs';
 import { threadApi } from '@/lib/api/threads';
 import { useThreadStore } from './use-thread-store';
 import { Thread, ThreadReply } from '@/types/thread';
-import { setAuthToken } from '@/lib/axios';
 
 export const useThread = () => {
-  const { getToken } = useAuth();
-  const { userId } = useAuth();
+  const { userId } = useUser();
   const { user } = useUser();
   const { setActiveThread, setLoading, setError, addReply } = useThreadStore();
-
-  // Set up auth token
-  setAuthToken(() => getToken());
 
   const loadReplies = useCallback(async (threadId: string) => {
     try {
@@ -47,10 +41,8 @@ export const useThread = () => {
     try {
       setLoading(true);
       setError(null);
-      const token = await getToken();
-      if (!token) throw new Error('No auth token');
-
-      // Create the thread
+      
+      // CORRECT AUTH PATTERN: Use configured api client via threadApi
       const thread = await threadApi.createThread(messageId);
       
       // Add the user data to the thread if it's missing
@@ -66,17 +58,12 @@ export const useThread = () => {
       // Load replies for the thread
       const replies = await loadReplies(thread.id);
       
-      // Set active thread with parent message, replies and ensure content is set
       setActiveThread({
         ...threadWithUser,
         parentMessage: parentMessage || {
           content: threadWithUser.content,
           createdAt: threadWithUser.createdAt,
-          user: threadWithUser.user || {
-            id: userId || '',
-            name: user?.fullName || user?.username || 'Unknown User',
-            imageUrl: user?.imageUrl
-          }
+          user: threadWithUser.user
         },
         replies,
       } as Thread & { replies: ThreadReply[] });
@@ -89,15 +76,14 @@ export const useThread = () => {
     } finally {
       setLoading(false);
     }
-  }, [getToken, setActiveThread, setLoading, setError, userId, user, loadReplies]);
+  }, [userId, user, setActiveThread, setLoading, setError, loadReplies]);
 
   const handleAddReply = useCallback(async (threadId: string, content: string) => {
     try {
       setLoading(true);
       setError(null);
-      const token = await getToken();
-      if (!token) throw new Error('No auth token');
 
+      // CORRECT AUTH PATTERN: Use configured api client via threadApi
       const reply = await threadApi.addReply(threadId, content);
       
       // Add the user data and ensure createdAt is set for the reply
@@ -120,7 +106,7 @@ export const useThread = () => {
     } finally {
       setLoading(false);
     }
-  }, [getToken, setLoading, setError, userId, user, addReply]);
+  }, [setLoading, setError, userId, user, addReply]);
 
   return {
     createThread,

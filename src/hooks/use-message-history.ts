@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
-import { useAuth } from '@clerk/nextjs';
 import { Message } from '@/types/message';
 import { useToast } from '@/components/ui/use-toast';
+import { api } from '@/lib/axios';
 
 interface UseMessageHistoryReturn {
   messages: Message[];
@@ -16,7 +16,6 @@ export function useMessageHistory(): UseMessageHistoryReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const { getToken } = useAuth();
   const { toast } = useToast();
 
   const fetchMessages = useCallback(async (channelId: string, cursor?: string) => {
@@ -30,40 +29,8 @@ export function useMessageHistory(): UseMessageHistoryReturn {
         queryParams.append('cursor', cursor);
       }
 
-      const token = await getToken();
-      if (!token) {
-        throw new Error('No authentication token available');
-      }
-
-      console.log('[Message History] Fetching with token:', token.slice(0, 10) + '...');
-
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/messages/channel/${channelId}?${queryParams}`;
-      console.log('[Message History] Fetching from URL:', url);
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        // Try to get detailed error from response
-        let errorMessage = response.statusText;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.message || errorData.error || errorMessage;
-        } catch (e) {
-          // If we can't parse the error JSON, use the status text
-          console.error('[Message History] Failed to parse error response:', e);
-        }
-        throw new Error(`Server error: ${errorMessage} (${response.status})`);
-      }
-
-      const data = await response.json();
-      console.log('[Message History] Received data:', data);
+      const response = await api.get(`/messages/channel/${channelId}?${queryParams}`);
+      const data = response.data;
       
       if (!Array.isArray(data.messages)) {
         console.error('[Message History] Invalid response format:', data);
@@ -71,16 +38,11 @@ export function useMessageHistory(): UseMessageHistoryReturn {
       }
       
       setMessages(prev => {
-        // If we're loading more (have cursor), prepend to existing messages
-        // since we're loading older messages
         if (cursor) {
-          // Remove any duplicates by message ID
           const existingIds = new Set(prev.map(m => m.id));
           const newMessages = data.messages.filter((m: Message) => !existingIds.has(m.id));
           return [...newMessages, ...prev];
         }
-        // Otherwise replace existing messages
-        // Sort messages by createdAt to ensure correct order
         return data.messages.sort((a: Message, b: Message) => 
           new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
         );
@@ -99,7 +61,7 @@ export function useMessageHistory(): UseMessageHistoryReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [getToken, toast]);
+  }, [toast]);
 
   return {
     messages,

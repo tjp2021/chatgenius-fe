@@ -18,6 +18,7 @@ import { useUser } from "@clerk/nextjs";
 import { UserSearch } from './user-search';
 import { useSocket } from '@/providers/socket-provider';
 import { ChannelType } from '@/types/channel';
+import { api } from "@/lib/axios";
 
 const channelSchema = z.discriminatedUnion('type', [
   // Public channel schema
@@ -134,25 +135,7 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
   const handleSubmit = async (data: ChannelFormData) => {
     try {
       console.log('\n=== CHANNEL CREATION START ===');
-      console.log('Active Tab:', activeTab);
-      console.log('Current User:', user?.id);
-      console.log('Raw Form Data:', data);
-      console.log('Form Members:', data.members);
-      console.log('Form Current State:', form.getValues());
-      console.log('Form Errors:', form.formState.errors);
-      
       setIsLoading(true);
-      const token = await getToken();
-
-      // For private channels and DMs, filter out current user from members
-      const memberIds = data.members || [];
-      console.log('\nMember Processing:');
-      console.log('Initial Members:', memberIds);
-      // Only filter out current user for DMs
-      const filteredMemberIds = activeTab === 'dm' 
-        ? memberIds.filter(id => id !== user?.id)
-        : memberIds;
-      console.log('After Filtering Current User:', filteredMemberIds);
 
       const requestBody = {
         name: activeTab !== 'dm' ? data.name : undefined,
@@ -164,26 +147,11 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
         ownerId: user?.id
       };
 
-      console.log('\n=== REQUEST DETAILS ===');
-      console.log('URL:', `${process.env.NEXT_PUBLIC_API_URL}/channels`);
-      console.log('Final Request Body:', JSON.stringify(requestBody, null, 2));
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/channels`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(requestBody),
-      });
+      // CORRECT AUTH PATTERN: Use configured api client for authenticated requests
+      // This ensures proper token handling and error management
+      const response = await api.post('/channels', requestBody);
+      const channel = response.data;
       
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        console.error('Channel creation error:', errorData);
-        throw new Error(errorData?.message || 'Failed to create channel');
-      }
-
-      const channel = await response.json();
       console.log('=== CHANNEL CREATED ===');
       console.log('Channel:', channel);
 
@@ -200,7 +168,6 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
       // Then refresh channels to update the UI
       await refreshChannels();
       
-      // Show success toast
       toast({
         title: 'Success',
         description: `Channel "${data.name}" has been created`,

@@ -1,15 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Loader2 } from 'lucide-react';
-import { apiClient } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useDebounce } from '@/hooks/use-debounce';
-import { useAuth } from '@clerk/nextjs';
+import { api } from '@/lib/axios';
 
 interface User {
   id: string;
@@ -27,33 +26,15 @@ interface UserSearchProps {
 export function UserSearch({ onSelect, selectedUsers, placeholder = 'Search users...' }: UserSearchProps) {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
-  const { getToken } = useAuth();
-
-  // Set the token whenever it changes
-  useEffect(() => {
-    const updateToken = async () => {
-      const token = await getToken();
-      console.log('Token updated:', token ? 'present' : 'missing');
-      apiClient.setToken(token);
-    };
-    updateToken();
-  }, [getToken]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['users', debouncedSearch],
     queryFn: async () => {
-      console.log('Executing search query with:', debouncedSearch);
-      const result = await apiClient.searchUsers(debouncedSearch);
-      console.log('Search result:', result);
-      return result;
+      const response = await api.get(`/users/search?query=${debouncedSearch}`);
+      return response.data;
     },
     enabled: debouncedSearch.length > 0
   });
-
-  useEffect(() => {
-    console.log('Search value:', search);
-    console.log('Debounced search:', debouncedSearch);
-  }, [search, debouncedSearch]);
 
   const handleSelect = (userId: string) => {
     console.log('Clicked user:', userId);

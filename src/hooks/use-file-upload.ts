@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
-import { useAuth } from '@clerk/nextjs';
 import { FileMetadata, FileUploadState, ALLOWED_FILE_TYPES } from '@/types/file';
-import { uploadFile } from '@/api/files';
+import { api } from '@/lib/axios';
 
 interface UseFileUploadOptions {
   onSuccess?: (metadata: FileMetadata) => void;
@@ -9,7 +8,6 @@ interface UseFileUploadOptions {
 }
 
 export function useFileUpload(options: UseFileUploadOptions = {}) {
-  const { getToken } = useAuth();
   const [state, setState] = useState<FileUploadState>({
     file: null,
     progress: 0,
@@ -49,14 +47,22 @@ export function useFileUpload(options: UseFileUploadOptions = {}) {
     setState(prev => ({ ...prev, status: 'uploading' }));
 
     try {
-      const token = await getToken();
-      if (!token) {
-        throw new Error('Authentication required');
-      }
-      
-      const metadata = await uploadFile(state.file, token, (progress) => {
-        setState(prev => ({ ...prev, progress }));
+      const formData = new FormData();
+      formData.append('file', state.file);
+
+      const response = await api.post('/files/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        onUploadProgress: (progressEvent) => {
+          const progress = Math.round(
+            (progressEvent.loaded * 100) / (progressEvent.total || 100)
+          );
+          setState(prev => ({ ...prev, progress }));
+        },
       });
+
+      const metadata = response.data;
 
       setState({
         file: null,
@@ -75,7 +81,7 @@ export function useFileUpload(options: UseFileUploadOptions = {}) {
       }));
       options.onError?.(new Error(errorMessage));
     }
-  }, [state.file, state.status, options, getToken]);
+  }, [state.file, state.status, options]);
 
   const reset = useCallback(() => {
     setState({
