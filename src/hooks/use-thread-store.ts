@@ -22,6 +22,7 @@ interface ThreadStore {
   setLoading: (loading: boolean) => void;
   setError: (error: Error | null) => void;
   addReply: (reply: ThreadReply) => void;
+  clearThread: () => void;
 }
 
 export const useThreadStore = create<ThreadStore>((set, get) => ({
@@ -90,5 +91,9 @@ export const useThreadStore = create<ThreadStore>((set, get) => ({
         }
       ]
     } : null
-  }))
+  })),
+  clearThread: () => set({ 
+    activeThread: null,
+    error: null 
+  })
 })); 

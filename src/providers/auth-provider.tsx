@@ -16,8 +16,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Set up token getter to match socket implementation
-    console.log('✅ [Auth] Setting up token getter...');
+    // FIRST: Set up the proven auth pattern with api client
     setAuthToken(async () => {
       if (!isSignedIn) {
         console.log('❌ [Auth] Not signed in');
@@ -28,26 +27,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return token;
     });
 
-    // SYNC USER WITH DB when signed in and loaded
-    if (isSignedIn && user) {
-      console.log('🔄 [Auth] Syncing user with DB...');
-      api.post('/users/sync', {
-        id: user.id,
-        email: user.primaryEmailAddress?.emailAddress,
-        username: user.username,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        imageUrl: user.imageUrl
-      }).catch(err => {
-        console.error('❌ [Auth] Failed to sync user:', err);
-      });
-    }
+    // THEN: After auth is configured, sync the user
+    const syncUser = async () => {
+      if (isSignedIn && user) {
+        try {
+          // Use the configured api client that now has auth
+          await api.post('/users/sync', {
+            id: user.id,
+            email: user.primaryEmailAddress?.emailAddress,
+            username: user.username,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            imageUrl: user.imageUrl
+          });
+          console.log('✅ [Auth] User synced successfully');
+        } catch (err) {
+          console.error('❌ [Auth] Failed to sync user:', err);
+        }
+      }
+    };
+
+    syncUser();
   }, [getToken, isLoaded, isSignedIn, user]);
 
-  if (!isLoaded) {
-    console.log('⌛ [Auth] Rendering null while loading...');
-    return null;
-  }
+  if (!isLoaded) return null;
 
   return <>{children}</>;
 } 

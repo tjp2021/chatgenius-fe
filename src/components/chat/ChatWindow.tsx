@@ -88,6 +88,9 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
   const { createThread } = useThread();
   const { isLoading: isThreadLoading, activeThread } = useThreadStore();
 
+  // Add this at the top with other store hooks
+  const clearThread = useThreadStore((state) => state.clearThread);
+
   // Combine history messages with local messages
   const messages = useMemo(() => {
     // Create a Map to store unique messages, with the most recent version taking precedence
@@ -338,8 +341,10 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
       // Clear local messages when channel changes
       setLocalMessages([]);
       setMessageStatuses([]);
+      // Clear thread state when channel changes
+      clearThread();
     }
-  }, [channelId, fetchMessages]);
+  }, [channelId, fetchMessages, clearThread]);
 
   // Add load more function
   const handleLoadMore = () => {

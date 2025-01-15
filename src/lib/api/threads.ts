@@ -5,7 +5,9 @@ export const threadApi = {
   // Create a new thread
   createThread: async (messageId: string): Promise<Thread> => {
     try {
-      const response = await api.post<Thread>(`/messages/${messageId}/threads`);
+      const response = await api.post<Thread>('/threads', {
+        messageId
+      });
       return response.data;
     } catch (error) {
       console.error('Error creating thread:', error);
