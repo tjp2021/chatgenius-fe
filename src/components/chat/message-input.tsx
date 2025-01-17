@@ -11,8 +11,23 @@ import { FileUpload } from '@/components/file/file-upload';
 import { Toggle } from '@/components/ui/toggle';
 import { RAGService } from '@/services/rag';
 import { useToast } from '@/components/ui/use-toast';
-import { SearchResult } from '@/api/search';
 import { useAuth } from '@clerk/nextjs';
+
+interface SearchResult {
+  id: string;
+  content: string;
+  score: number;
+  metadata: {
+    messageId: string;
+    channelId: string;
+    userId: string;
+    timestamp: number;
+    replyToId?: string;
+    threadId?: string;
+    chunkIndex?: number;
+  };
+  vector?: number[];
+}
 
 interface MessageInputProps {
   channelId: string;
@@ -72,16 +87,29 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
 
       ragTimeoutRef.current = setTimeout(async () => {
         try {
+          console.log('RAG: Starting request...', { content, channelId, userId });
           setRagState(prev => ({ ...prev, isLoading: true }));
           const response = await RAGService.getResponse(content, channelId, userId);
+          console.log('RAG: Got response:', response);
           setRagState({
             answer: response.answer,
-            context: response.context.messages,
+            context: response.context.messages.map(msg => ({
+              id: msg.id,
+              content: msg.content,
+              score: msg.score,
+              metadata: {
+                messageId: msg.id,
+                channelId: msg.channelId,
+                userId: msg.userId,
+                timestamp: Date.now()
+              }
+            })),
             isLoading: false,
             metadata: response.metadata
           });
+          console.log('RAG: Updated state:', ragState);
         } catch (error) {
-          console.error('Failed to get RAG suggestion:', error);
+          console.error('RAG: Failed to get response:', error);
           setRagState({
             answer: null,
             context: [],
@@ -116,6 +144,17 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
       }
     };
   }, []);
+
+  // Add effect to reset state on channel change
+  useEffect(() => {
+    setContent('');
+    setIsRAGEnabled(false);
+    setRagState({
+      answer: null,
+      context: [] as SearchResult[],
+      isLoading: false
+    });
+  }, [channelId]);
 
   const handleSubmit = async () => {
     if (!content.trim() || isProcessing || !userId) return;
@@ -157,7 +196,9 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit();
+      if (!isRAGEnabled) {
+        handleSubmit();
+      }
     }
   };
 
@@ -206,14 +247,14 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
               setIsTyping(false);
             }
           }}
-          placeholder={isRAGEnabled ? "Ask anything about the conversation..." : "Type a message..."}
+          placeholder={isRAGEnabled ? "Ask a question and we will find you relevant messages to your query" : "Type a message..."}
           className="min-h-[60px] resize-none"
           aria-label="Message input"
           disabled={isProcessing}
         />
         <Button 
           type="submit" 
-          disabled={!content.trim() || isProcessing || !userId}
+          disabled={!content.trim() || isProcessing || !userId || isRAGEnabled}
           aria-label="Send message"
         >
           {isProcessing ? (
@@ -225,7 +266,7 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
       </form>
 
       {/* RAG Context Display */}
-      {isRAGEnabled && userId && (content.trim().length > 10 || ragState.isLoading || ragState.answer) && (
+      {isRAGEnabled && userId && (
         <div className="px-4 pb-4 space-y-3">
           {ragState.isLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">

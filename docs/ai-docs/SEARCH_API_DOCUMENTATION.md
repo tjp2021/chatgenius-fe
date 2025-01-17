@@ -23,7 +23,7 @@ x-user-id: required_user_id
 }
 ```
 
-## Query Types and Examples
+## Query Types and ExamplesR
 
 ### 1. Direct Semantic Search
 ```typescript
