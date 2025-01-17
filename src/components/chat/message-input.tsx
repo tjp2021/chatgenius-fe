@@ -9,10 +9,26 @@ import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { FileUpload } from '@/components/file/file-upload';
 import { Toggle } from '@/components/ui/toggle';
+import { RAGService } from '@/services/rag';
+import { useToast } from '@/components/ui/use-toast';
+import { SearchResult } from '@/api/search';
+import { useAuth } from '@clerk/nextjs';
 
 interface MessageInputProps {
   channelId: string;
   className?: string;
+}
+
+interface RAGState {
+  answer: string | null;
+  context: SearchResult[];
+  isLoading: boolean;
+  metadata?: {
+    processingTime: number;
+    tokensUsed: number;
+    model: string;
+    contextSize: number;
+  };
 }
 
 export function MessageInput({ channelId, className }: MessageInputProps) {
@@ -20,14 +36,22 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
   const [isTyping, setIsTyping] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isRAGEnabled, setIsRAGEnabled] = useState(false);
-  const [ragSuggestion, setRagSuggestion] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [ragState, setRagState] = useState<RAGState>({
+    answer: null,
+    context: [],
+    isLoading: false
+  });
+  
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
   const ragTimeoutRef = useRef<NodeJS.Timeout>();
+  const { toast } = useToast();
+  const { userId } = useAuth();
 
   const { sendMessage } = useSocketMessages(channelId);
 
-  const handleTyping = useCallback(() => {
+  const handleTyping = useCallback(async () => {
     if (!isTyping) {
       setIsTyping(true);
     }
@@ -41,32 +65,46 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
     }, 2000);
 
     // Get RAG suggestions while typing
-    if (isRAGEnabled && content.trim().length > 10) {
+    if (isRAGEnabled && content.trim().length > 10 && userId) {
       if (ragTimeoutRef.current) {
         clearTimeout(ragTimeoutRef.current);
       }
 
       ragTimeoutRef.current = setTimeout(async () => {
         try {
-          const response = await fetch('/api/rag/suggest', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              content,
-              channelId 
-            })
+          setRagState(prev => ({ ...prev, isLoading: true }));
+          const response = await RAGService.getResponse(content, channelId, userId);
+          setRagState({
+            answer: response.answer,
+            context: response.context.messages,
+            isLoading: false,
+            metadata: response.metadata
           });
-
-          if (response.ok) {
-            const data = await response.json();
-            setRagSuggestion(data.suggestion);
-          }
         } catch (error) {
           console.error('Failed to get RAG suggestion:', error);
+          setRagState({
+            answer: null,
+            context: [],
+            isLoading: false
+          });
+          
+          if (error instanceof Error && error.message.includes('RATE_LIMITED')) {
+            toast({
+              title: 'Rate Limited',
+              description: 'Please wait a moment before trying again.',
+              variant: 'destructive'
+            });
+          }
         }
       }, 500);
+    } else {
+      setRagState({
+        answer: null,
+        context: [],
+        isLoading: false
+      });
     }
-  }, [isTyping, content, channelId, isRAGEnabled]);
+  }, [isTyping, content, channelId, isRAGEnabled, userId, toast]);
 
   useEffect(() => {
     return () => {
@@ -80,37 +118,39 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
   }, []);
 
   const handleSubmit = async () => {
-    if (!content.trim()) return;
+    if (!content.trim() || isProcessing || !userId) return;
 
     try {
+      setIsProcessing(true);
+
       if (isTyping) {
         setIsTyping(false);
       }
 
-      // If RAG is enabled, process through RAG endpoint
+      // If RAG is enabled, process through RAG service
       if (isRAGEnabled) {
-        const response = await fetch('/api/rag/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            content,
-            channelId
-          })
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          await sendMessage(data.response);
-        }
+        const response = await RAGService.getResponse(content, channelId, userId);
+        await sendMessage(response.answer);
       } else {
         await sendMessage(content);
       }
 
       setContent('');
-      setRagSuggestion(null);
+      setRagState({
+        answer: null,
+        context: [],
+        isLoading: false
+      });
       textareaRef.current?.focus();
     } catch (error) {
       console.error('Failed to send message:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to send message. Please try again.',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -122,12 +162,7 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
   };
 
   return (
-    <div className={cn("space-y-2", className)}>
-      {ragSuggestion && (
-        <div className="px-4 py-2 bg-muted/50 rounded-md">
-          <p className="text-sm text-muted-foreground">Suggestion: {ragSuggestion}</p>
-        </div>
-      )}
+    <div className={cn("flex flex-col", className)}>
       <form 
         onSubmit={(e) => {
           e.preventDefault();
@@ -150,6 +185,7 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
           onPressedChange={setIsRAGEnabled}
           className="flex-shrink-0"
           aria-label="Toggle RAG assistance"
+          disabled={!userId}
         >
           <Icons.brain className="h-5 w-5" />
         </Toggle>
@@ -170,18 +206,73 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
               setIsTyping(false);
             }
           }}
-          placeholder={isRAGEnabled ? "Type a message (RAG-assisted)..." : "Type a message..."}
+          placeholder={isRAGEnabled ? "Ask anything about the conversation..." : "Type a message..."}
           className="min-h-[60px] resize-none"
           aria-label="Message input"
+          disabled={isProcessing}
         />
         <Button 
           type="submit" 
-          disabled={!content.trim()}
+          disabled={!content.trim() || isProcessing || !userId}
           aria-label="Send message"
         >
-          <Icons.send className="h-4 w-4" />
+          {isProcessing ? (
+            <Icons.loader className="h-4 w-4 animate-spin" />
+          ) : (
+            <Icons.send className="h-4 w-4" />
+          )}
         </Button>
       </form>
+
+      {/* RAG Context Display */}
+      {isRAGEnabled && userId && (content.trim().length > 10 || ragState.isLoading || ragState.answer) && (
+        <div className="px-4 pb-4 space-y-3">
+          {ragState.isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Icons.loader className="h-4 w-4 animate-spin" />
+              <span>Analyzing conversation context...</span>
+            </div>
+          ) : ragState.answer ? (
+            <div className="space-y-4">
+              {/* AI Answer */}
+              <div className="bg-primary/5 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <Icons.brain className="h-5 w-5 text-primary mt-1" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">AI Response</p>
+                    <p className="text-sm text-muted-foreground">{ragState.answer}</p>
+                    {ragState.metadata && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Generated in {(ragState.metadata.processingTime / 1000).toFixed(1)}s using {ragState.metadata.model}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Relevant Context */}
+              {ragState.context.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">Based on these messages:</p>
+                  <div className="space-y-2">
+                    {ragState.context.map((msg, i) => (
+                      <div 
+                        key={msg.id} 
+                        className="text-sm bg-muted/50 rounded-md p-3 space-y-1"
+                      >
+                        <p className="text-muted-foreground">{msg.content}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Relevance: {(msg.score * 100).toFixed(0)}%
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
 
       <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
         <DialogContent>
