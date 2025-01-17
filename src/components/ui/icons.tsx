@@ -58,4 +58,5 @@ export const Icons = {
   twitter: Twitter,
   check: Check,
   messageSquare: MessageSquare,
+  plus: Plus,
 } as const 

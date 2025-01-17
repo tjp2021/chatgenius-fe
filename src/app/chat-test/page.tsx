@@ -151,14 +151,15 @@ export default function ChatTestPage() {
         id: rawMessage.id || rawMessage.tempId || Date.now().toString(),
         content: rawMessage.content,
         channelId: rawMessage.channelId,
-        userId: rawMessage.senderId || rawMessage.userId,
-        createdAt: rawMessage.createdAt || rawMessage.timestamp || new Date().toISOString(),
-        updatedAt: rawMessage.updatedAt || rawMessage.timestamp || new Date().toISOString(),
+        userId: rawMessage.userId,
+        createdAt: rawMessage.createdAt,
+        updatedAt: rawMessage.updatedAt,
         isRead: false,
         isDelivered: false,
+        hasReplies: false,
         user: {
-          id: rawMessage.senderId || rawMessage.userId,
-          name: rawMessage.sender?.name || `User ${(rawMessage.senderId || rawMessage.userId || '').split('_')[1]?.slice(0, 8)}`,
+          id: rawMessage.user.id,
+          name: rawMessage.user.name
         },
         reactions: [],
         replyToId: null

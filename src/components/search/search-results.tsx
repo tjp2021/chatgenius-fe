@@ -1,9 +1,9 @@
 'use client';
 
-import { SearchResult } from '@/api/search';
+import { Message } from '@/api/search';
 
 interface SearchResultsProps {
-  results: SearchResult[];
+  results: Message[];
   isLoading?: boolean;
 }
 
@@ -33,7 +33,7 @@ export function SearchResults({ results, isLoading }: SearchResultsProps) {
     <div className="space-y-4">
       {results.map((result) => (
         <div 
-          key={result.messageId}
+          key={result.id}
           className="p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
         >
           <p className="text-sm">{result.content}</p>

@@ -137,19 +137,18 @@ export const CreateChannelDialog = ({ open, onOpenChange }: CreateChannelDialogP
       console.log('\n=== CHANNEL CREATION START ===');
       setIsLoading(true);
 
-      const requestBody = {
-        name: activeTab !== 'dm' ? data.name : undefined,
-        description: activeTab !== 'dm' ? (data.description || "") : undefined,
+      const payload = {
+        name: data.name,
         type: activeTab === 'public' ? ChannelType.PUBLIC 
-           : activeTab === 'private' ? ChannelType.PRIVATE 
-           : ChannelType.DM,
-        memberIds: filteredMemberIds,
+             : activeTab === 'private' ? ChannelType.PRIVATE 
+             : ChannelType.DM,
+        memberIds: data.members,
         ownerId: user?.id
       };
 
       // CORRECT AUTH PATTERN: Use configured api client for authenticated requests
       // This ensures proper token handling and error management
-      const response = await api.post('/channels', requestBody);
+      const response = await api.post('/channels', payload);
       const channel = response.data;
       
       console.log('=== CHANNEL CREATED ===');

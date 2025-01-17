@@ -5,17 +5,19 @@ import { SearchInput } from '@/components/search/search-input';
 import { SearchResults } from '@/components/search/search-results';
 import { useSocket } from '@/providers/socket-provider';
 import { cn } from '@/lib/utils';
-import { searchMessages, SearchResponse, SearchResult } from '@/api/search';
+import { searchMessages, SearchResponse, Message } from '@/api/search';
+import { useAuth } from '@clerk/nextjs';
 
 export default function SearchTestPage() {
   const { isConnected } = useSocket();
+  const { userId } = useAuth();
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [results, setResults] = useState<Message[]>([]);
   const [lastQuery, setLastQuery] = useState<string>('');
   
   const handleSearch = async (query: string) => {
-    if (query === lastQuery || isSearching) {
+    if (query === lastQuery || isSearching || !userId) {
       return;
     }
 
@@ -23,8 +25,8 @@ export default function SearchTestPage() {
       setIsSearching(true);
       setError(null);
       setLastQuery(query);
-      const response = await searchMessages(query);
-      setResults(response.results);
+      const response = await searchMessages(query, userId);
+      setResults(response.items);
     } catch (err) {
       setError('Search failed. Please try again.');
       setResults([]);

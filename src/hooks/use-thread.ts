@@ -5,7 +5,6 @@ import { useThreadStore } from './use-thread-store';
 import { Thread, ThreadReply } from '@/types/thread';
 
 export const useThread = () => {
-  const { userId } = useUser();
   const { user } = useUser();
   const { setActiveThread, setLoading, setError, addReply } = useThreadStore();
 
@@ -49,7 +48,7 @@ export const useThread = () => {
       const threadWithUser = {
         ...thread,
         user: thread.user || {
-          id: userId || '',
+          id: user?.id || '',
           name: user?.fullName || user?.username || 'Unknown User',
           imageUrl: user?.imageUrl
         }
@@ -76,7 +75,7 @@ export const useThread = () => {
     } finally {
       setLoading(false);
     }
-  }, [userId, user, setActiveThread, setLoading, setError, loadReplies]);
+  }, [user, setActiveThread, setLoading, setError, loadReplies]);
 
   const handleAddReply = useCallback(async (threadId: string, content: string) => {
     try {
@@ -91,7 +90,7 @@ export const useThread = () => {
         ...reply,
         createdAt: reply.createdAt || new Date().toISOString(),
         user: reply.user || {
-          id: userId || '',
+          id: user?.id || '',
           name: user?.fullName || user?.username || 'Unknown User',
           imageUrl: user?.imageUrl
         }
@@ -106,7 +105,7 @@ export const useThread = () => {
     } finally {
       setLoading(false);
     }
-  }, [setLoading, setError, userId, user, addReply]);
+  }, [setLoading, setError, user, addReply]);
 
   return {
     createThread,

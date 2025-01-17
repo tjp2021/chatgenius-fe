@@ -17,15 +17,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     // FIRST: Set up the proven auth pattern with api client
-    setAuthToken(async () => {
-      if (!isSignedIn) {
-        console.log('❌ [Auth] Not signed in');
-        return null;
-      }
-      const token = await getToken();
-      console.log('🎯 [Auth] Got token:', token?.substring(0, 20) + '...');
-      return token;
-    });
+    setAuthToken(
+      async () => {
+        if (!isSignedIn) {
+          console.log('❌ [Auth] Not signed in');
+          return null;
+        }
+        const token = await getToken();
+        console.log('🎯 [Auth] Got token:', token?.substring(0, 20) + '...');
+        return token;
+      },
+      user?.id || ''
+    );
 
     // THEN: After auth is configured, sync the user
     const syncUser = async () => {

@@ -1,24 +1,33 @@
-import { useAuth } from '@clerk/nextjs';
+import { useAuth, useUser } from '@clerk/nextjs';
 import { useEffect } from 'react';
 import { setAuthToken } from '@/lib/axios';
 
 export function useClerkToken() {
   const { getToken } = useAuth();
+  const { user } = useUser();
 
   useEffect(() => {
     const initializeToken = async () => {
       try {
         const token = await getToken();
         if (!token) {
-          setAuthToken(() => Promise.resolve(null));
+          setAuthToken(
+            () => Promise.resolve(null),
+            user?.id || ''
+          );
           return;
         }
 
-        // Set the token with Bearer prefix
-        setAuthToken(() => Promise.resolve(`Bearer ${token}`));
+        setAuthToken(
+          () => getToken(),
+          user?.id || ''
+        );
       } catch (error) {
         console.error('Error setting token:', error);
-        setAuthToken(() => Promise.resolve(null));
+        setAuthToken(
+          () => Promise.resolve(null),
+          user?.id || ''
+        );
       }
     };
 

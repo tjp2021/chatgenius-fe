@@ -59,7 +59,8 @@ export function useSocketMessages(channelId: string) {
       reactions: [],
       isRead: false,
       isDelivered: false,
-      replyToId: null
+      replyToId: null,
+      hasReplies: false
     };
 
     setMessages(prev => [...prev, message]);

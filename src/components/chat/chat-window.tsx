@@ -3,7 +3,12 @@
 import { Icons } from '@/components/ui/icons';
 import { cn } from '@/lib/utils';
 
-const MessageThread = ({ message, hasReplies }) => {
+interface MessageThreadProps {
+  message: { replyCount?: number };
+  hasReplies: boolean;
+}
+
+const MessageThread = ({ message, hasReplies }: MessageThreadProps) => {
   return (
     <button 
       className={cn(
@@ -16,11 +21,12 @@ const MessageThread = ({ message, hasReplies }) => {
   );
 };
 
-return (
-  // ...
-  <MessageThread 
-    message={message}
-    hasReplies={message.replyCount > 0} // Or however you track replies
-  />
-  // ...
-); 
+export function ChatWindow() {
+  const message = { replyCount: 0 };
+  return (
+    <MessageThread 
+      message={message}
+      hasReplies={message.replyCount > 0}
+    />
+  );
+} 
