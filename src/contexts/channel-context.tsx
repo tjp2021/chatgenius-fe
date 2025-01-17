@@ -6,6 +6,7 @@ import { useAuth } from '@clerk/nextjs';
 import React from 'react';
 import { useSocket } from '@/providers/socket-provider';
 import { api } from '@/lib/axios';
+import { setAuthToken } from '@/lib/axios';
 
 interface ChannelContextType {
   channels: Channel[];
@@ -23,8 +24,15 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
-  const { getToken, isSignedIn, isLoaded } = useAuth();
+  const { getToken, isSignedIn, isLoaded, userId } = useAuth();
   const { socket } = useSocket();
+
+  // Set up auth once when component mounts
+  useEffect(() => {
+    if (userId && getToken) {
+      setAuthToken(getToken, userId);
+    }
+  }, [userId, getToken]);
 
   const fetchChannels = async () => {
     if (!isLoaded || !isSignedIn) {
@@ -34,20 +42,12 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      // Try to get a token first to ensure auth is ready
-      const token = await getToken();
-      if (!token) {
-        console.log('[ChannelContext] No token yet, skipping fetch');
-        return;
-      }
-
       console.log('[ChannelContext] Fetching channels...');
       const response = await api.get('/channels?view=sidebar');
       console.log('[ChannelContext] Got channels:', response.data);
       setChannels(response.data);
     } catch (error) {
       console.error('[ChannelContext] Failed to fetch channels:', error);
-      // Don't throw error on landing page
       setChannels([]);
     } finally {
       setIsLoading(false);
@@ -56,7 +56,7 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     fetchChannels();
-  }, [isLoaded, isSignedIn, getToken]);
+  }, [isLoaded, isSignedIn, getToken, userId]);
 
   const refreshChannels = async () => {
     await fetchChannels();

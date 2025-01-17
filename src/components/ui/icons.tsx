@@ -10,6 +10,7 @@ import {
   Paperclip,
   Plus,
   Send,
+  Brain,
   X,
 } from 'lucide-react';
 
@@ -23,5 +24,6 @@ export const Icons = {
   paperclip: Paperclip,
   plus: Plus,
   send: Send,
+  brain: Brain,
   x: X,
 } as const; 

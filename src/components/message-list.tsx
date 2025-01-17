@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useMessages } from '@/hooks/useMessages';
-import { MessageInput } from './message-input';
+import { MessageInput } from '@/components/chat/message-input';
 import { MessageItem } from './message-item';
 import { TypingIndicatorDisplay } from './typing-indicator';
 
@@ -69,7 +69,7 @@ export const MessageList = ({ channelId }: MessageListProps) => {
         <div ref={bottomRef} />
         <TypingIndicatorDisplay channelId={channelId} />
       </div>
-      <MessageInput channelId={channelId} onSend={sendMessage} />
+      <MessageInput channelId={channelId} />
     </div>
   );
 }; 

@@ -302,7 +302,8 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
       reactions: [],
       isRead: false,
       isDelivered: false,
-      replyToId: null
+      replyToId: null,
+      hasReplies: false
     };
     
     try {
