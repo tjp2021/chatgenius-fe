@@ -162,30 +162,24 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
     try {
       setIsProcessing(true);
 
-      if (isTyping) {
-        setIsTyping(false);
-      }
-
-      // If RAG is enabled, process through RAG service
+      // If RAG is enabled, just get and display the response
       if (isRAGEnabled) {
         const response = await RAGService.getResponse(content, channelId, userId);
-        await sendMessage(response.answer);
+        setRagState({
+          answer: response.response,
+          context: [],
+          isLoading: false
+        });
       } else {
+        // Normal message send
         await sendMessage(content);
+        setContent('');
       }
-
-      setContent('');
-      setRagState({
-        answer: null,
-        context: [],
-        isLoading: false
-      });
-      textareaRef.current?.focus();
     } catch (error) {
-      console.error('Failed to send message:', error);
+      console.error('Failed:', error);
       toast({
         title: 'Error',
-        description: 'Failed to send message. Please try again.',
+        description: isRAGEnabled ? 'Failed to get AI response' : 'Failed to send message',
         variant: 'destructive'
       });
     } finally {
@@ -196,9 +190,7 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (!isRAGEnabled) {
-        handleSubmit();
-      }
+      handleSubmit();
     }
   };
 
@@ -254,7 +246,7 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
         />
         <Button 
           type="submit" 
-          disabled={!content.trim() || isProcessing || !userId || isRAGEnabled}
+          disabled={!content.trim() || isProcessing || !userId}
           aria-label="Send message"
         >
           {isProcessing ? (

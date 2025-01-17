@@ -54,71 +54,11 @@ export class RAGService {
     }
 
     try {
-      // Get relevant messages using vector search
-      console.log('Calling searchMessages...');
-      const searchResults = await searchMessages(
-        query, 
-        userId,
-        channelId ? { channelId: { $eq: channelId } } : undefined
-      );
-      console.log('Raw Search Results:', JSON.stringify(searchResults, null, 2));
-      
-      // Log before filtering
-      console.log('Before filtering messages. Items:', searchResults.items?.length || 0);
-      
-      // Get both highly relevant and somewhat relevant messages
-      const highlyRelevant = searchResults.items?.filter(msg => msg.score > 0.75) || [];
-      const somewhatRelevant = searchResults.items?.filter(msg => msg.score > 0.5 && msg.score <= 0.75) || [];
-      
-      console.log('Highly relevant messages:', highlyRelevant.length);
-      console.log('Somewhat relevant messages:', somewhatRelevant.length);
-
-      // If no highly relevant messages, provide graceful fallback
-      if (highlyRelevant.length === 0) {
-        const fallbackResponse: RAGResponse = {
-          answer: somewhatRelevant.length > 0 
-            ? "I found some messages that might be related, but they're not exact matches. Here's what I found:"
-            : "I couldn't find any messages specifically about that topic. Feel free to start a discussion about it or try rephrasing your question.",
-          context: {
-            messages: somewhatRelevant.map(msg => ({
-              id: msg.id,
-              content: msg.content,
-              channelId: msg.channelId,
-              userId: msg.userId,
-              score: msg.score
-            })),
-            scores: somewhatRelevant.map(msg => msg.score),
-            channels: Array.from(new Set(somewhatRelevant.map(msg => msg.channelId)))
-          },
-          metadata: {
-            processingTime: 0,
-            tokensUsed: 0,
-            model: "fallback",
-            contextSize: somewhatRelevant.length
-          }
-        };
-        return fallbackResponse;
-      }
-
-      // Proceed with highly relevant messages
-      const context = {
-        messages: highlyRelevant.map(msg => ({
-          id: msg.id,
-          content: msg.content,
-          channelId: msg.channelId,
-          userId: msg.userId,
-          score: msg.score
-        })),
-        scores: highlyRelevant.map(msg => msg.score),
-        channels: Array.from(new Set(highlyRelevant.map(msg => msg.channelId)))
-      };
-
-      // Call search endpoint with context
+      // Make a single call to /search with /rag command
       const response = await api.post<RAGResponse>('/search', {
         query: `/rag ${query}`,
-        context,
-        channelId: channelId || undefined,
-        minScore: 0.75
+        userId,
+        channelId: channelId || undefined
       });
 
       return response.data;
