@@ -92,20 +92,9 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
           const response = await RAGService.getResponse(content, channelId, userId);
           console.log('RAG: Got response:', response);
           setRagState({
-            answer: response.answer,
-            context: response.context.messages.map(msg => ({
-              id: msg.id,
-              content: msg.content,
-              score: msg.score,
-              metadata: {
-                messageId: msg.id,
-                channelId: msg.channelId,
-                userId: msg.userId,
-                timestamp: Date.now()
-              }
-            })),
-            isLoading: false,
-            metadata: response.metadata
+            answer: response.response,
+            context: [],
+            isLoading: false
           });
           console.log('RAG: Updated state:', ragState);
         } catch (error) {

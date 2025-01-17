@@ -23,9 +23,8 @@ interface RAGMetadata {
 }
 
 interface RAGResponse {
-  answer: string;            // AI-generated answer
-  context: RAGContext;       // Retrieved context used
-  metadata: RAGMetadata;     // Additional metadata
+  response: string;            // AI-generated response
+  type: string;               // Response type
 }
 
 interface RAGErrorResponse {
