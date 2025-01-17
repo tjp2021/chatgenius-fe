@@ -14,6 +14,7 @@ import {
   Image,
   Laptop,
   Loader2,
+  MessageSquare,
   Moon,
   MoreVertical,
   Paperclip,
@@ -56,4 +57,5 @@ export const Icons = {
   loader: Loader2,
   twitter: Twitter,
   check: Check,
+  messageSquare: MessageSquare,
 } as const 
