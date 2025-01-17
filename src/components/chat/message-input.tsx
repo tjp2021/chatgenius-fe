@@ -8,6 +8,7 @@ import { useSocketMessages } from '@/hooks/use-socket-messages';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { FileUpload } from '@/components/file/file-upload';
+import { Toggle } from '@/components/ui/toggle';
 
 interface MessageInputProps {
   channelId: string;
@@ -18,8 +19,11 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
   const [content, setContent] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isRAGEnabled, setIsRAGEnabled] = useState(false);
+  const [ragSuggestion, setRagSuggestion] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
+  const ragTimeoutRef = useRef<NodeJS.Timeout>();
 
   const { sendMessage } = useSocketMessages(channelId);
 
@@ -35,12 +39,42 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
     typingTimeoutRef.current = setTimeout(() => {
       setIsTyping(false);
     }, 2000);
-  }, [isTyping]);
+
+    // Get RAG suggestions while typing
+    if (isRAGEnabled && content.trim().length > 10) {
+      if (ragTimeoutRef.current) {
+        clearTimeout(ragTimeoutRef.current);
+      }
+
+      ragTimeoutRef.current = setTimeout(async () => {
+        try {
+          const response = await fetch('/api/rag/suggest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              content,
+              channelId 
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            setRagSuggestion(data.suggestion);
+          }
+        } catch (error) {
+          console.error('Failed to get RAG suggestion:', error);
+        }
+      }, 500);
+    }
+  }, [isTyping, content, channelId, isRAGEnabled]);
 
   useEffect(() => {
     return () => {
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
+      }
+      if (ragTimeoutRef.current) {
+        clearTimeout(ragTimeoutRef.current);
       }
     };
   }, []);
@@ -53,8 +87,27 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
         setIsTyping(false);
       }
 
-      await sendMessage(content);
+      // If RAG is enabled, process through RAG endpoint
+      if (isRAGEnabled) {
+        const response = await fetch('/api/rag/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content,
+            channelId
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          await sendMessage(data.response);
+        }
+      } else {
+        await sendMessage(content);
+      }
+
       setContent('');
+      setRagSuggestion(null);
       textareaRef.current?.focus();
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -70,6 +123,11 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
 
   return (
     <div className={cn("space-y-2", className)}>
+      {ragSuggestion && (
+        <div className="px-4 py-2 bg-muted/50 rounded-md">
+          <p className="text-sm text-muted-foreground">Suggestion: {ragSuggestion}</p>
+        </div>
+      )}
       <form 
         onSubmit={(e) => {
           e.preventDefault();
@@ -86,6 +144,15 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
         >
           <Icons.paperclip className="h-5 w-5" />
         </Button>
+
+        <Toggle
+          pressed={isRAGEnabled}
+          onPressedChange={setIsRAGEnabled}
+          className="flex-shrink-0"
+          aria-label="Toggle RAG assistance"
+        >
+          <Icons.brain className="h-5 w-5" />
+        </Toggle>
         
         <Textarea
           ref={textareaRef}
@@ -103,7 +170,7 @@ export function MessageInput({ channelId, className }: MessageInputProps) {
               setIsTyping(false);
             }
           }}
-          placeholder="Type a message..."
+          placeholder={isRAGEnabled ? "Type a message (RAG-assisted)..." : "Type a message..."}
           className="min-h-[60px] resize-none"
           aria-label="Message input"
         />
