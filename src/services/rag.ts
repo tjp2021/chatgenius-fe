@@ -1,4 +1,4 @@
-import { searchMessages, Message } from '@/api/search';
+import { searchMessages, MessageContent } from '@/api/search';
 import { api } from '@/lib/axios';
 
 interface ContextMessage {
@@ -100,12 +100,12 @@ export class RAGService {
         messages: relevantMessages.map(msg => ({
           id: msg.id,
           content: msg.content,
-          channelId: msg.channelId,
-          userId: msg.userId,
+          channelId: msg.metadata.channelId,
+          userId: msg.user.id,
           score: msg.score
         })),
         scores: relevantMessages.map(msg => msg.score),
-        channels: Array.from(new Set(relevantMessages.map(msg => msg.channelId)))
+        channels: Array.from(new Set(relevantMessages.map(msg => msg.metadata.channelId)))
       };
 
       // Call search endpoint

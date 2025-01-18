@@ -35,8 +35,8 @@ interface ChannelSearchParams {
 export const searchUsers = async (
   search: string,
   token: string,
-  page: number = 1,
-  limit: number = 10
+  page = 1,
+  limit = 10
 ): Promise<SearchUsersResponse> => {
   const response = await axiosInstance.get('/users/search', {
     params: { search, page, limit },
@@ -105,6 +105,12 @@ export const channelSearch = async ({
   );
 
   return response.data;
+};
+
+export const DEFAULT_PARAMS = {
+  limit: 10,
+  offset: 0,
+  // ... rest of the params
 };
 
 // Export API functions

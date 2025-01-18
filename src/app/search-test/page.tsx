@@ -5,7 +5,7 @@ import { SearchInput } from '@/components/search/search-input';
 import { SearchResults } from '@/components/search/search-results';
 import { useSocket } from '@/providers/socket-provider';
 import { cn } from '@/lib/utils';
-import { searchMessages, SearchResponse, Message } from '@/api/search';
+import { searchMessages, BaseSearchResponse, MessageContent } from '@/api/search';
 import { useAuth } from '@clerk/nextjs';
 
 export default function SearchTestPage() {
@@ -13,7 +13,7 @@ export default function SearchTestPage() {
   const { userId } = useAuth();
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [results, setResults] = useState<Message[]>([]);
+  const [results, setResults] = useState<MessageContent[]>([]);
   const [lastQuery, setLastQuery] = useState<string>('');
   
   const handleSearch = async (query: string) => {

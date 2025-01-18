@@ -109,8 +109,6 @@ export interface RAGResponse {
 }
 
 // Legacy types for backward compatibility
-export interface Message extends MessageContent {}
-export interface PageInfo extends PaginationInfo {}
 export interface SearchRequest extends SemanticSearchRequest {
   userId: string;
   filter?: {
@@ -118,15 +116,14 @@ export interface SearchRequest extends SemanticSearchRequest {
     $or?: Array<{ messageId: string } | { replyToId: string }>;
   };
 }
-export interface SearchResponse extends BaseSearchResponse {}
 
 // API Functions
 export const searchMessages = async (
   query: string,
   userId: string,
   filter?: SearchRequest['filter']
-): Promise<SearchResponse> => {
-  const response = await api.post<SearchResponse>('/search', {
+): Promise<BaseSearchResponse> => {
+  const response = await api.post<BaseSearchResponse>('/search', {
     query,
     userId,
     filter,

@@ -12,6 +12,7 @@ interface ChannelHeaderProps {
   onSearch: (query: string) => void;
   onClearSearch: () => void;
   isSearchMode: boolean;
+  isConnected: boolean;
 }
 
 export function ChannelHeader({ 

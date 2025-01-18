@@ -1,11 +1,23 @@
 import { Message } from './message';
 
 export interface BaseSearchResponse {
-  items: Message[];
+  items: Array<{
+    id: string;
+    content: string;
+    score: number;
+    metadata: {
+      timestamp: string;
+      [key: string]: any;
+    };
+    user: {
+      id: string;
+      name: string;
+    };
+  }>;
   pageInfo: {
-    total: number;
     hasNextPage: boolean;
     cursor?: string;
+    total: number;
   };
 }
 
