@@ -1,37 +1,68 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, KeyboardEvent } from 'react';
 import { Input } from '@/components/ui/input';
 import { useDebounce } from '@/hooks/use-debounce';
+
+export type SearchType = 'semantic' | 'channel' | 'user' | 'rag';
 
 interface SearchInputProps {
   onSearch: (query: string) => void;
   placeholder?: string;
   className?: string;
+  searchType?: SearchType;
+  minLength?: number;
 }
 
 export function SearchInput({ 
   onSearch, 
   placeholder = 'Search messages...', 
-  className 
+  className,
+  searchType = 'semantic',
+  minLength = 2
 }: SearchInputProps) {
   const [search, setSearch] = useState('');
-  const debouncedSearch = useDebounce(search, 300);
+  // Use longer debounce for RAG searches
+  const debouncedSearch = useDebounce(search, searchType === 'rag' ? 1000 : 300);
 
-  // Effect to handle debounced search
   useEffect(() => {
     const trimmedSearch = debouncedSearch.trim();
-    if (trimmedSearch && trimmedSearch.length >= 2) {  // Only search if 2+ characters
+    // Only auto-search for non-RAG queries
+    if (searchType !== 'rag' && trimmedSearch && trimmedSearch.length >= minLength) {
       onSearch(trimmedSearch);
     }
-  }, [debouncedSearch, onSearch]);
+  }, [debouncedSearch, onSearch, minLength, searchType]);
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      const trimmedSearch = search.trim();
+      if (trimmedSearch && trimmedSearch.length >= minLength) {
+        onSearch(trimmedSearch);
+      }
+    }
+  };
+
+  // Adjust placeholder based on search type
+  const getPlaceholder = () => {
+    switch (searchType) {
+      case 'channel':
+        return 'Search in this channel...';
+      case 'user':
+        return 'Search user messages...';
+      case 'rag':
+        return 'Ask AI about messages... (press Enter to search)';
+      default:
+        return placeholder;
+    }
+  };
 
   return (
     <Input
       type="text"
       value={search}
       onChange={(e) => setSearch(e.target.value)}
-      placeholder={placeholder}
+      onKeyDown={handleKeyDown}
+      placeholder={getPlaceholder()}
       className={className}
     />
   );

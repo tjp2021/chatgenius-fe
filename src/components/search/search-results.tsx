@@ -1,9 +1,9 @@
 'use client';
 
-import { Message } from '@/api/search';
+import { MessageContent } from '@/api/search';
 
 interface SearchResultsProps {
-  results: Message[];
+  results: MessageContent[];
   isLoading?: boolean;
 }
 
@@ -36,11 +36,18 @@ export function SearchResults({ results, isLoading }: SearchResultsProps) {
           key={result.id}
           className="p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
         >
-          <p className="text-sm">{result.content}</p>
-          <div className="mt-2 flex items-center gap-2">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="font-medium">{result.user.name}</span>
             <span className="text-xs text-muted-foreground">
-              Relevance: {Math.round(result.score * 100)}%
+              {new Date(result.metadata.timestamp).toLocaleString()}
             </span>
+          </div>
+          <p className="text-sm">{result.content}</p>
+          <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <span>Score: {Math.round(result.score * 100)}%</span>
+            {result.thread && (
+              <span>• {result.thread.replyCount} replies</span>
+            )}
           </div>
         </div>
       ))}
