@@ -18,6 +18,9 @@ import { ThreadView } from './thread-view';
 import { useThread } from '@/hooks/use-thread';
 import { SOCKET_EVENTS } from '@/constants/socket-events';
 import { MessageInput } from './message-input';
+import { ChannelHeader } from './channel-header';
+import { channelSearch } from '@/lib/api';
+import { auth } from '@clerk/nextjs';
 
 interface ChatWindowProps {
   channelId: string;
@@ -67,7 +70,7 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
   
   const { socket, isConnected } = useSocket();
   const { toast } = useToast();
-  const { userId } = useAuth();
+  const { userId, getToken } = useAuth();
   const { user } = useUser();
   const { channels } = useChannelContext();
   const [newMessage, setNewMessage] = useState('');
@@ -91,11 +94,70 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
   // Add this at the top with other store hooks
   const clearThread = useThreadStore((state) => state.clearThread);
 
-  // Combine history messages with local messages
-  const messages = useMemo(() => {
+  // Add search results state
+  const [searchResults, setSearchResults] = useState<Message[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isSearchMode, setIsSearchMode] = useState(false);
+
+  const handleClearSearch = () => {
+    setSearchResults([]);
+    setIsSearchMode(false);
+  };
+
+  const handleChannelSearch = async (query: string) => {
+    if (!query.trim()) return;
+    
+    setIsSearching(true);
+    setSearchResults([]); // Clear previous results
+    setIsSearchMode(true); // Enter search mode
+    
+    try {
+      const token = await getToken();
+      
+      if (!token || !userId) {
+        throw new Error('Not authenticated');
+      }
+
+      const response = await channelSearch({
+        channelId,
+        query: query.trim(),
+        token,
+        userId,
+        limit: 50
+      });
+      
+      // Map the results to include the correct timestamp from metadata
+      const resultsWithDates = response.items.map((item: any) => ({
+        ...item,
+        createdAt: item.metadata?.timestamp || item.timestamp || new Date().toISOString(),
+        user: {
+          ...item.user,
+          name: item.user?.name || item.userName || 'Unknown'
+        }
+      }));
+      
+      setSearchResults(resultsWithDates);
+    } catch (error) {
+      console.error('Channel search error:', error);
+      toast({
+        title: "Search Failed",
+        description: error instanceof Error ? error.message : "Failed to search messages",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Update the messages memo to handle search results
+  const displayMessages = useMemo(() => {
+    if (isSearchMode && searchResults.length > 0) {
+      return searchResults;
+    }
+
     // Create a Map to store unique messages, with the most recent version taking precedence
     const messageMap = new Map<string, Message>();
-
+    
     // Add local messages first (they take precedence)
     localMessages.forEach(msg => {
       // Only add messages that are not replies (no replyToId)
@@ -116,7 +178,7 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
     return Array.from(messageMap.values()).sort((a, b) => 
       new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
-  }, [historyMessages, localMessages]);
+  }, [historyMessages, localMessages, isSearchMode, searchResults]);
 
   // Get channel name
   const channel = channels.find(c => c.id === channelId);
@@ -140,7 +202,7 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
       isConnected,
       channelId,
       socketId: socket?.getSocketId?.(),
-      messageCount: messages.length,
+      messageCount: displayMessages.length,
       currentMessageStatuses: messageStatuses
     });
     
@@ -259,7 +321,7 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
       socket.off(SOCKET_EVENTS.MESSAGE.FAILED, handleMessageFailed);
       socket.off(SOCKET_EVENTS.MESSAGE.NEW, handleNewMessage);
     };
-  }, [socket, isConnected, channelId, messageStatuses, localMessages]);
+  }, [socket, isConnected, channelId, messageStatuses, localMessages, displayMessages]);
 
   const handleSendMessage = async () => {
     console.log('[Send] ====== STARTING MESSAGE SEND FLOW ======');
@@ -364,7 +426,7 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
   // Scroll to bottom when messages change
   useEffect(() => {
     scrollToBottom('smooth');
-  }, [messages]);
+  }, [displayMessages]);
 
   // Scroll to bottom on initial load
   useEffect(() => {
@@ -377,19 +439,14 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
     <div className="flex h-[600px] w-full max-w-4xl mx-auto bg-white rounded-lg shadow-lg overflow-hidden">
       {/* Main chat area */}
       <div className="flex flex-col flex-1">
-        {/* Header */}
-        <div className="p-4 border-b">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Channel: {channelName}</h2>
-            <div className="text-sm text-gray-500">
-              {isConnected ? (
-                <span className="text-green-500">Connected</span>
-              ) : (
-                <span className="text-red-500">Disconnected</span>
-              )}
-            </div>
-          </div>
-        </div>
+        {/* Replace old header with new ChannelHeader */}
+        <ChannelHeader
+          channelName={channelName}
+          isConnected={isConnected}
+          onSearch={handleChannelSearch}
+          onClearSearch={handleClearSearch}
+          isSearchMode={isSearchMode}
+        />
 
         {/* Messages */}
         <div 
@@ -402,90 +459,186 @@ export function ChatWindow({ channelId, initialMessages = [] }: ChatWindowProps)
             </div>
           )}
           
-          {nextCursor && (
-            <button
-              onClick={handleLoadMore}
-              disabled={isLoading}
-              className="w-full text-center text-sm text-gray-500 hover:text-gray-700 py-2"
-            >
-              {isLoading ? 'Loading...' : 'Load more messages'}
-            </button>
-          )}
-
-          {messages.map((message) => (
-            <div
-              key={`${message.id}-${message.createdAt}`}
-              className="flex flex-col items-start"
-            >
-              <div className="flex flex-col space-y-2">
-                <span className="text-sm font-medium text-gray-600">
-                  {message.user?.name || 'Unknown User'}
-                </span>
-                <div className={cn(
-                  "px-4 py-2 rounded-lg",
-                  message.userId === userId 
-                    ? "bg-green-100 text-black" 
-                    : "bg-gray-100 text-gray-900"
-                )}>
-                  {message.content}
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  {userId && (
-                    <MessageReactions
-                      message={message}
-                      currentUserId={userId}
-                    />
-                  )}
-                  <button
-                    className={cn(
-                      "p-1.5 rounded-full hover:bg-gray-100 transition-colors",
-                      (message.hasReplies || isThreadLoading || activeThread?.id === message.id) 
-                        ? "text-blue-500" 
-                        : "text-muted-foreground"
-                    )}
-                    onClick={async () => {
-                      try {
-                        await createThread(message.id, {
-                          content: message.content,
-                          createdAt: message.createdAt,
-                          user: message.user
-                        });
-                      } catch (error) {
-                        toast({
-                          title: "Error",
-                          description: "Failed to create thread",
-                          variant: "destructive",
-                        });
-                      }
-                    }}
-                    disabled={isThreadLoading}
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
-                <span>{new Date(message.createdAt).toLocaleTimeString()}</span>
-                {message.userId === userId && (
-                  <>
-                    {messageStatuses.find(status => status.id === message.id)?.status === 'sending' && (
-                      <span className="flex items-center gap-1">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        Sending
-                      </span>
-                    )}
-                    {messageStatuses.find(status => status.id === message.id)?.status === 'sent' && (
-                      <CheckIcon className="h-3 w-3" />
-                    )}
-                    {messageStatuses.find(status => status.id === message.id)?.status === 'delivered' && (
-                      <CheckCheckIcon className="h-3 w-3" />
-                    )}
-                  </>
-                )}
-              </div>
+          {/* Show search results if searching */}
+          {isSearching ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          ))}
+          ) : isSearchMode ? (
+            <>
+              <div className="flex items-center justify-between mb-4 text-sm text-muted-foreground">
+                <span>Found {searchResults.length} messages</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearSearch}
+                >
+                  Exit Search
+                </Button>
+              </div>
+              {searchResults.map((message) => (
+                <div
+                  key={`${message.id}-${message.createdAt}`}
+                  className="flex flex-col items-start"
+                >
+                  <div className="flex flex-col space-y-2">
+                    <span className="text-sm font-medium text-gray-600">
+                      {message.user?.name || 'Unknown User'}
+                    </span>
+                    <div className={cn(
+                      "px-4 py-2 rounded-lg",
+                      message.userId === userId 
+                        ? "bg-green-100 text-black" 
+                        : "bg-gray-100 text-gray-900"
+                    )}>
+                      {message.content}
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      {userId && (
+                        <MessageReactions
+                          message={message}
+                          currentUserId={userId}
+                        />
+                      )}
+                      <button
+                        className={cn(
+                          "p-1.5 rounded-full hover:bg-gray-100 transition-colors",
+                          (message.hasReplies || isThreadLoading || activeThread?.id === message.id) 
+                            ? "text-blue-500" 
+                            : "text-muted-foreground"
+                        )}
+                        onClick={async () => {
+                          try {
+                            await createThread(message.id, {
+                              content: message.content,
+                              createdAt: message.createdAt,
+                              user: message.user
+                            });
+                          } catch (error) {
+                            toast({
+                              title: "Error",
+                              description: "Failed to create thread",
+                              variant: "destructive",
+                            });
+                          }
+                        }}
+                        disabled={isThreadLoading}
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+                    <span>{new Date(message.createdAt).toLocaleTimeString()}</span>
+                    {message.userId === userId && (
+                      <>
+                        {messageStatuses.find(status => status.id === message.id)?.status === 'sending' && (
+                          <span className="flex items-center gap-1">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Sending
+                          </span>
+                        )}
+                        {messageStatuses.find(status => status.id === message.id)?.status === 'sent' && (
+                          <CheckIcon className="h-3 w-3" />
+                        )}
+                        {messageStatuses.find(status => status.id === message.id)?.status === 'delivered' && (
+                          <CheckCheckIcon className="h-3 w-3" />
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </>
+          ) : (
+            <>
+              {nextCursor && (
+                <button
+                  onClick={handleLoadMore}
+                  disabled={isLoading}
+                  className="w-full text-center text-sm text-gray-500 hover:text-gray-700 py-2"
+                >
+                  {isLoading ? 'Loading...' : 'Load more messages'}
+                </button>
+              )}
+
+              {displayMessages.map((message) => (
+                <div
+                  key={`${message.id}-${message.createdAt}`}
+                  className="flex flex-col items-start"
+                >
+                  <div className="flex flex-col space-y-2">
+                    <span className="text-sm font-medium text-gray-600">
+                      {message.user?.name || 'Unknown User'}
+                    </span>
+                    <div className={cn(
+                      "px-4 py-2 rounded-lg",
+                      message.userId === userId 
+                        ? "bg-green-100 text-black" 
+                        : "bg-gray-100 text-gray-900"
+                    )}>
+                      {message.content}
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      {userId && (
+                        <MessageReactions
+                          message={message}
+                          currentUserId={userId}
+                        />
+                      )}
+                      <button
+                        className={cn(
+                          "p-1.5 rounded-full hover:bg-gray-100 transition-colors",
+                          (message.hasReplies || isThreadLoading || activeThread?.id === message.id) 
+                            ? "text-blue-500" 
+                            : "text-muted-foreground"
+                        )}
+                        onClick={async () => {
+                          try {
+                            await createThread(message.id, {
+                              content: message.content,
+                              createdAt: message.createdAt,
+                              user: message.user
+                            });
+                          } catch (error) {
+                            toast({
+                              title: "Error",
+                              description: "Failed to create thread",
+                              variant: "destructive",
+                            });
+                          }
+                        }}
+                        disabled={isThreadLoading}
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+                    <span>{new Date(message.createdAt).toLocaleTimeString()}</span>
+                    {message.userId === userId && (
+                      <>
+                        {messageStatuses.find(status => status.id === message.id)?.status === 'sending' && (
+                          <span className="flex items-center gap-1">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Sending
+                          </span>
+                        )}
+                        {messageStatuses.find(status => status.id === message.id)?.status === 'sent' && (
+                          <CheckIcon className="h-3 w-3" />
+                        )}
+                        {messageStatuses.find(status => status.id === message.id)?.status === 'delivered' && (
+                          <CheckCheckIcon className="h-3 w-3" />
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
         </div>
 
         {/* Message Input */}

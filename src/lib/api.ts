@@ -1,89 +1,116 @@
-import { auth } from "@clerk/nextjs";
 import { SearchUsersResponse } from "@/types/user";
+import { BaseSearchResponse } from "@/types/search";
+import axios, { AxiosError } from "axios";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+// Create axios instance
+const axiosInstance = axios.create({
+  baseURL: API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  }
+});
+
+interface SearchParams {
+  query: string;
+  sortBy?: {
+    field: string;
+    order: 'asc' | 'desc';
+  };
+  cursor?: string;
+}
+
+interface ChannelSearchParams {
+  channelId: string;
+  query: string;
+  token: string;
+  userId: string;
+  limit?: number;
+  minScore?: number;
+  cursor?: string;
+  dateRange?: string;
+}
 
 export const searchUsers = async (
   search: string,
-  page = 1,
-  limit = 10
+  token: string,
+  page: number = 1,
+  limit: number = 10
 ): Promise<SearchUsersResponse> => {
-  const token = await auth().getToken();
-  
-  const url = `${process.env.NEXT_PUBLIC_API_URL}/users/search?query=${search}&page=${page}&limit=${limit}`;
-
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to search users: ${response.status}`);
+  const response = await axiosInstance.get('/users/search', {
+    params: { search, page, limit },
+    headers: {
+      Authorization: `Bearer ${token}`
     }
+  });
 
-    const data = await response.json();
-    return data;
-  } catch (err) {
-    console.error('Search error:', err);
-    throw err;
-  }
+  return response.data;
 };
 
-export const getCurrentUser = async () => {
-  const token = await auth().getToken();
-  
-  const url = `${process.env.NEXT_PUBLIC_API_URL}/users/me`;
-
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to get current user: ${response.status}`);
+export const getCurrentUser = async (token: string) => {
+  const response = await axiosInstance.get('/users/me', {
+    headers: {
+      Authorization: `Bearer ${token}`
     }
+  });
 
-    const data = await response.json();
-    return data;
-  } catch (err) {
-    console.error('Get current user error:', err);
-    throw err;
-  }
+  return response.data;
 };
 
-export const updateUser = async (userData: { name: string }) => {
-  const token = await auth().getToken();
-  
-  const url = `${process.env.NEXT_PUBLIC_API_URL}/users/me`;
+export const updateUser = async (
+  token: string,
+  userData: {
+    name?: string;
+    email?: string;
+    imageUrl?: string;
+  }
+) => {
+  const response = await axiosInstance.patch('/users/me', userData, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
 
-  try {
-    const response = await fetch(url, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
+  return response.data;
+};
+
+export const channelSearch = async ({
+  channelId,
+  query,
+  token,
+  userId,
+  limit,
+  minScore,
+  cursor,
+  dateRange
+}: ChannelSearchParams): Promise<any> => {
+  const response = await axiosInstance.post('/search/semantic', 
+    {
+      query,
+      channelId
+    },
+    {
+      params: {
+        limit,
+        minScore,
+        cursor,
+        dateRange
       },
-      body: JSON.stringify(userData)
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to update user: ${response.status}`);
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-User-ID': userId
+      }
     }
+  );
 
-    const data = await response.json();
-    return data;
-  } catch (err) {
-    console.error('Update user error:', err);
-    throw err;
-  }
+  return response.data;
 };
 
+// Export API functions
 export const api = {
   searchUsers,
   getCurrentUser,
-  updateUser
+  updateUser,
+  channelSearch
 }; 
