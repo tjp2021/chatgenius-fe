@@ -42,11 +42,8 @@ export function SearchInput({
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearch(e.target.value);
-    // Only update parent state for RAG (needed for send button state)
-    if (searchType === 'rag') {
-      onSearch(e.target.value);
-    }
+    const value = e.target.value;
+    setSearch(value);
   };
 
   // Adjust placeholder based on search type
