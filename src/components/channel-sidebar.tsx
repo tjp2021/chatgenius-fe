@@ -9,10 +9,11 @@ import { cn } from '@/lib/utils';
 import { BrowseChannelsModal } from './browse-channels-modal';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/dialog';
 import { ChannelSection } from './chat/channel-section';
-import { Plus, Users } from 'lucide-react';
+import { Plus, Users, Brain } from 'lucide-react';
 import { useAuth } from '@clerk/nextjs';
 import { CreateChannelModal } from './modals/create-channel-modal';
 import { CreateDMModal } from './modals/create-dm-modal';
+import { RagModal } from './modals/rag-modal';
 
 export function ChannelSidebar() {
   const noop = () => void 0;
@@ -24,6 +25,7 @@ export function ChannelSidebar() {
   const [isBrowseOpen, setIsBrowseOpen] = useState(false);
   const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false);
   const [isCreateDMOpen, setIsCreateDMOpen] = useState(false);
+  const [isRagOpen, setIsRagOpen] = useState(false);
 
   // Section expansion states
   const [expandedSections, setExpandedSections] = useState({
@@ -181,8 +183,17 @@ export function ChannelSidebar() {
         )}
       </div>
 
-      {/* Browse Channels Button at bottom */}
-      <div className="p-2 border-t border-emerald-800">
+      {/* Bottom buttons */}
+      <div className="p-2 border-t border-emerald-800 space-y-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full text-emerald-100 hover:bg-emerald-800/50"
+          onClick={() => setIsRagOpen(x => !x)}
+        >
+          <Brain className="h-4 w-4 mr-2" />
+          AI Assistant
+        </Button>
         <Button
           variant="ghost"
           size="sm"
@@ -208,6 +219,11 @@ export function ChannelSidebar() {
       <CreateDMModal
         isOpen={isCreateDMOpen}
         onClose={() => setIsCreateDMOpen(false)}
+      />
+
+      <RagModal
+        isOpen={isRagOpen}
+        onClose={() => setIsRagOpen(false)}
       />
 
       <Dialog open={!!channelToLeave} onOpenChange={() => setChannelToLeave(null)}>

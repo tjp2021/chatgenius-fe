@@ -22,7 +22,6 @@ export function SearchInput({
   minLength = 2
 }: SearchInputProps) {
   const [search, setSearch] = useState('');
-  // Use longer debounce for RAG searches
   const debouncedSearch = useDebounce(search, searchType === 'rag' ? 1000 : 300);
 
   useEffect(() => {
@@ -39,6 +38,13 @@ export function SearchInput({
       if (trimmedSearch && trimmedSearch.length >= minLength) {
         onSearch(trimmedSearch);
       }
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearch(e.target.value);
+    if (searchType === 'rag') {
+      onSearch(e.target.value);
     }
   };
 
@@ -60,7 +66,7 @@ export function SearchInput({
     <Input
       type="text"
       value={search}
-      onChange={(e) => setSearch(e.target.value)}
+      onChange={handleChange}
       onKeyDown={handleKeyDown}
       placeholder={getPlaceholder()}
       className={className}
