@@ -22,12 +22,12 @@ export function SearchInput({
   minLength = 2
 }: SearchInputProps) {
   const [search, setSearch] = useState('');
-  const debouncedSearch = useDebounce(search, searchType === 'rag' ? 1000 : 300);
+  const debouncedSearch = useDebounce(search, 300);
 
   useEffect(() => {
     const trimmedSearch = debouncedSearch.trim();
-    // Only auto-search for non-RAG queries
-    if (searchType !== 'rag' && trimmedSearch && trimmedSearch.length >= minLength) {
+    // Only auto-search for non-RAG and non-semantic queries
+    if (!['rag', 'semantic'].includes(searchType) && trimmedSearch && trimmedSearch.length >= minLength) {
       onSearch(trimmedSearch);
     }
   }, [debouncedSearch, onSearch, minLength, searchType]);
@@ -43,6 +43,7 @@ export function SearchInput({
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value);
+    // Only update parent state for RAG (needed for send button state)
     if (searchType === 'rag') {
       onSearch(e.target.value);
     }
@@ -57,6 +58,8 @@ export function SearchInput({
         return 'Search user messages...';
       case 'rag':
         return 'Ask AI about messages... (press Enter to search)';
+      case 'semantic':
+        return 'Search messages... (press Enter to search)';
       default:
         return placeholder;
     }

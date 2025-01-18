@@ -9,11 +9,12 @@ import { cn } from '@/lib/utils';
 import { BrowseChannelsModal } from './browse-channels-modal';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/dialog';
 import { ChannelSection } from './chat/channel-section';
-import { Plus, Users, Brain } from 'lucide-react';
+import { Plus, Users, Brain, Search } from 'lucide-react';
 import { useAuth } from '@clerk/nextjs';
 import { CreateChannelModal } from './modals/create-channel-modal';
 import { CreateDMModal } from './modals/create-dm-modal';
 import { RagModal } from './modals/rag-modal';
+import { SearchModal } from './modals/search-modal';
 
 export function ChannelSidebar() {
   const noop = () => void 0;
@@ -26,6 +27,7 @@ export function ChannelSidebar() {
   const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false);
   const [isCreateDMOpen, setIsCreateDMOpen] = useState(false);
   const [isRagOpen, setIsRagOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   // Section expansion states
   const [expandedSections, setExpandedSections] = useState({
@@ -189,6 +191,15 @@ export function ChannelSidebar() {
           variant="ghost"
           size="sm"
           className="w-full text-emerald-100 hover:bg-emerald-800/50"
+          onClick={() => setIsSearchOpen(true)}
+        >
+          <Search className="h-4 w-4 mr-2" />
+          Search
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full text-emerald-100 hover:bg-emerald-800/50"
           onClick={() => setIsRagOpen(x => !x)}
         >
           <Brain className="h-4 w-4 mr-2" />
@@ -224,6 +235,11 @@ export function ChannelSidebar() {
       <RagModal
         isOpen={isRagOpen}
         onClose={() => setIsRagOpen(false)}
+      />
+
+      <SearchModal 
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
       />
 
       <Dialog open={!!channelToLeave} onOpenChange={() => setChannelToLeave(null)}>
